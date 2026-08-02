@@ -9,6 +9,7 @@ const createClient = (url: string): KyInstance =>
   ky.create({ prefix: url, retry: 0 });
 
 type TestServer = {
+  readonly url: string;
   readonly client: KyInstance;
   readonly close: () => Promise<void>;
 };
@@ -17,7 +18,7 @@ const startTestServer = async (
   options?: AnthropicMockOptions,
 ): Promise<TestServer> => {
   const { url, close } = await startAnthropicMock(options);
-  return { client: createClient(url), close };
+  return { url, client: createClient(url), close };
 };
 
 export type { TestServer };

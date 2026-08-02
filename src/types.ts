@@ -19,8 +19,11 @@ type AnthropicMockOptions = {
   readonly port?: number;
   readonly models?: readonly string[];
   readonly cannedResponse?: string;
+  readonly cannedResponseFile?: string;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  readonly streamChunkSize?: number;
+  readonly streamChunkDelayMs?: number;
 };
 
 type RunningAnthropicMock = {
