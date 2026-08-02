@@ -28,6 +28,17 @@ deterministic, and dependency-free.
 - **Standalone** server mode for end-to-end runs and for pointing a real
   client at `ANTHROPIC_HOST`
 
+## Design Decisions
+
+The HTTP layer is **Fastify**, chosen over in-process interceptor
+libraries (nock, MSW, sinon), a purpose-built mock library (Mockttp),
+and raw `node:http`. Fastify is the only option that gives **true
+incremental streaming that is also repeatable** (via `reply.hijack()` +
+`reply.raw`), at a fraction of the dependency weight, while still
+supporting in-process tests via `inject()`. See [ADR
+0001](./docs/decisions/0001-use-fastify-for-http-mock.md) for the full
+rationale, the evidence, and the alternatives considered.
+
 ## Tech Stack
 
 | Tool                                                             | Purpose                            |
@@ -260,6 +271,7 @@ These are **enforced** by the toolchain, not just preferences:
     ├── .ast-grep/rules/       # Structural lint/format rules
     ├── .github/workflows/     # CI
     ├── bin/anthropic-mock     # Server launcher (node --import tsx)
+    ├── docs/decisions/        # Architecture Decision Records (ADRs)
     ├── scripts/               # Tooling scripts (pandoc-md)
     ├── src/
     │   ├── index.ts           # Public exports
