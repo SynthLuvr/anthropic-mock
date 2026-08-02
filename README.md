@@ -55,9 +55,9 @@ deterministic, and dependency-free.
 
 ``` bash
 pnpm install
-pnpm build    # type-check with tsc
-pnpm test     # run unit tests
-pnpm start    # run the mock server on http://127.0.0.1:8787
+pnpm build           # type-check with tsc
+pnpm test            # run unit tests
+./bin/anthropic-mock  # run the mock server on http://127.0.0.1:8787
 ```
 
 ## Usage
@@ -96,12 +96,20 @@ console.log(mock.url); // http://127.0.0.1:<port>
 await mock.close();
 ```
 
-For a long-running process, use the `start` script (configurable via
-`PORT` and `HOST` env vars, default `127.0.0.1:8787`):
+For a long-running process, use the `anthropic-mock` launcher
+(configurable via `PORT` and `HOST` env vars, default `127.0.0.1:8787`):
 
 ``` bash
-pnpm start
-PORT=3000 pnpm start
+./bin/anthropic-mock
+PORT=3000 ./bin/anthropic-mock
+```
+
+Run `./setup.sh` to install the launcher onto your `PATH` (symlinks
+`bin/anthropic-mock` to `~/.local/bin/anthropic-mock`):
+
+``` bash
+./setup.sh
+anthropic-mock   # available from anywhere after setup
 ```
 
 ### Pointing a client at the mock
@@ -196,7 +204,6 @@ Returns a list of models. Only `id` is consumed by goose:
 | Script       | Description                                         |
 |--------------|-----------------------------------------------------|
 | `pnpm build` | Type-check the project with `tsc` (no output files) |
-| `pnpm start` | Run the mock server with `tsx`                      |
 
 ### Lint
 
@@ -252,16 +259,18 @@ These are **enforced** by the toolchain, not just preferences:
 
     ├── .ast-grep/rules/       # Structural lint/format rules
     ├── .github/workflows/     # CI
+    ├── bin/anthropic-mock     # Server launcher (node --import tsx)
     ├── scripts/               # Tooling scripts (pandoc-md)
     ├── src/
     │   ├── index.ts           # Public exports
     │   ├── create-mock.ts     # Fastify factory + start helper
     │   ├── messages.ts        # POST /v1/messages (canned SSE)
     │   ├── models.ts          # GET /v1/models
-    │   ├── server.ts          # Standalone entry point (pnpm start)
+    │   ├── server.ts          # Standalone entry point (bin/anthropic-mock)
     │   ├── types.ts           # Shared types
     │   └── tests/             # Unit and integration tests
     ├── biome.json             # Biome formatter + linter config
+    ├── setup.sh               # Install deps + symlink launcher on PATH
     ├── .oxlintrc.json         # oxlint type-aware rules
     ├── tsconfig.json          # TypeScript config
     └── vitest.config.ts       # Test config
