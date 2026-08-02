@@ -220,6 +220,7 @@ The `lint` script runs all linters in sequence via `npm-run-all`:
 | `pnpm lint:exports`   | ast-grep: no inline exports               |
 | `pnpm lint:functions` | ast-grep: no function declarations        |
 | `pnpm lint:md`        | pandoc: Markdown must be GFM-formatted    |
+| `pnpm lint:peer-deps` | pnpm: no peer dependency conflicts        |
 
 ### Format
 
