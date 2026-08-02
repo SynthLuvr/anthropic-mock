@@ -1,24 +1,21 @@
 #!/bin/sh
-# Project-relative launcher for the anthropic-mock server.
-# Resolves the project root from this script's own location,
-# so it works regardless of where it's invoked from.
+# Run the mock server from the project root regardless of where this
+# launcher is invoked from, including via a symlink.
 
-# Resolve symlinks so the launcher works whether invoked directly or via symlink
-SELF="$0"
-while [ -L "$SELF" ]; do
-  DIR="$(cd "$(dirname "$SELF")" && pwd)"
-  SYM="$(readlink "$SELF")"
-  case "$SYM" in
-    /*) SELF="$SYM" ;;
-    *)  SELF="$DIR/$SYM" ;;
+self="$0"
+while [ -L "$self" ]; do
+  dir="$(cd "$(dirname "$self")" && pwd)"
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *)  self="$dir/$target" ;;
   esac
 done
-SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+project_root="$(cd "$(dirname "$self")/.." && pwd)"
 
-cd "$PROJECT_ROOT" || {
-  echo "anthropic-mock: cannot cd to project root ($PROJECT_ROOT)" >&2
+cd "$project_root" || {
+  echo "anthropic-mock: cannot cd to project root ($project_root)" >&2
   exit 1
 }
 
-exec node --import "$PROJECT_ROOT/node_modules/tsx/dist/loader.mjs" "$PROJECT_ROOT/src/server.ts" "$@"
+exec node --import tsx src/server.ts "$@"
