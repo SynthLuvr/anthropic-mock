@@ -24,8 +24,7 @@
     "lint:file-comment": "pnpm exec sg scan --rule .ast-grep/rules/no-file-comment.yml --error=no-file-comment --globs '!**/*.d.ts' .",
     "lint:md": "tsx scripts/pandoc-md.mts --check",
     "format:md": "tsx scripts/pandoc-md.mts --write",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.44.1",

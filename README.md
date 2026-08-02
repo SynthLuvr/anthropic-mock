@@ -226,10 +226,9 @@ The `format` script runs all formatters in sequence:
 
 ### Test
 
-| Script            | Description           |
-|-------------------|-----------------------|
-| `pnpm test`       | Run integration tests |
-| `pnpm test:watch` | Watch mode            |
+| Script      | Description           |
+|-------------|-----------------------|
+| `pnpm test` | Run integration tests |
 
 ## Coding Conventions
 
