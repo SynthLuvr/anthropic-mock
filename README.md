@@ -13,15 +13,19 @@ direct Anthropic API:
 - `GET /v1/models` — list available models
 
 Responses are **canned** (fixed) for now, which keeps the mock fast,
-deterministic, and dependency-free.
+deterministic, and dependency-free. Canned text can be supplied inline
+or loaded from a markdown file; the fixtures in `src/responses/` are
+randomly generated (`pnpm gen:responses`).
 
 ## Features
 
 - **Fastify** HTTP server with the exact routes goose expects
-- **SSE** `POST /v1/messages` response in the full Anthropic event
-  sequence (`message_start` → `content_block_start` →
-  `content_block_delta` → `content_block_stop` → `message_delta` →
-  `message_stop`, terminated by `data: [DONE]`)
+- **Incremental SSE** `POST /v1/messages` streams the full Anthropic
+  event sequence (`message_start` → `content_block_start` →
+  `content_block_delta` (one per text chunk) → `content_block_stop` →
+  `message_delta` → `message_stop`, terminated by `data: [DONE]`)
+  straight to the socket via `reply.hijack()`, so deltas arrive over
+  time rather than in a single burst — just like the real API
 - **`GET /v1/models`** returning `{"data":[{"id":"..."}]}` (a `404` is
   also accepted by goose, so a working `200` is a safe default)
 - **In-process** testing via Fastify’s `inject()` (no port needed)
@@ -139,14 +143,17 @@ where `url` is the base URL (e.g. `http://127.0.0.1:54321`).
 
 ### `AnthropicMockOptions`
 
-| Option           | Type                | Default               | Description                                       |
-|------------------|---------------------|-----------------------|---------------------------------------------------|
-| `host`           | `string`            | `127.0.0.1`           | Listen host (`startAnthropicMock` only)           |
-| `port`           | `number`            | `0` (ephemeral)       | Listen port (`0` lets the OS choose)              |
-| `models`         | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models`            |
-| `cannedResponse` | `string`            | Canned greeting       | Text emitted in the `content_block_delta`         |
-| `inputTokens`    | `number`            | `10`                  | `usage.input_tokens` reported in `message_start`  |
-| `outputTokens`   | `number`            | `1`                   | `usage.output_tokens` reported in `message_delta` |
+| Option               | Type                | Default               | Description                                       |
+|----------------------|---------------------|-----------------------|---------------------------------------------------|
+| `host`               | `string`            | `127.0.0.1`           | Listen host (`startAnthropicMock` only)           |
+| `port`               | `number`            | `0` (ephemeral)       | Listen port (`0` lets the OS choose)              |
+| `models`             | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models`            |
+| `cannedResponse`     | `string`            | Canned greeting       | Text split across `content_block_delta` frames    |
+| `cannedResponseFile` | `string`            | —                     | Path to a file whose contents are the canned text |
+| `inputTokens`        | `number`            | `10`                  | `usage.input_tokens` reported in `message_start`  |
+| `outputTokens`       | `number`            | `1`                   | `usage.output_tokens` reported in `message_delta` |
+| `streamChunkSize`    | `number`            | `16`                  | Characters per `content_block_delta` text chunk   |
+| `streamChunkDelayMs` | `number`            | `5`                   | Milliseconds paused between streamed frames       |
 
 ### `RunningAnthropicMock`
 
@@ -162,7 +169,8 @@ where `url` is the base URL (e.g. `http://127.0.0.1:54321`).
 Accepts a JSON request body (model, messages, system, tools, …). The
 mock is lenient: it reads `model` (falling back to `claude-sonnet-4-5`)
 and echoes it in the response. It always replies with a canned SSE
-stream:
+stream, splitting the canned text into fixed-width chunks delivered as
+one `content_block_delta` each:
 
 ``` text
 event: message_start
@@ -172,7 +180,12 @@ event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi! This is a canned response from anthropic-mock."}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi! This is a can"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ned response from "}}
+
+... one content_block_delta per text chunk ...
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":0}
@@ -240,6 +253,16 @@ The `format` script runs all formatters in sequence:
 |-------------|-----------------------|
 | `pnpm test` | Run integration tests |
 
+### Canned responses
+
+`src/responses/` holds markdown fixtures used as canned responses. They
+are produced by a seeded generator so the committed files are stable
+across regenerations:
+
+| Script               | Description                                             |
+|----------------------|---------------------------------------------------------|
+| `pnpm gen:responses` | Regenerate `src/responses/*.md` (seeded, stable output) |
+
 ## Coding Conventions
 
 These are **enforced** by the toolchain, not just preferences:
@@ -263,11 +286,12 @@ These are **enforced** by the toolchain, not just preferences:
     ├── .github/workflows/     # CI
     ├── bin/anthropic-mock     # Server launcher (node --import tsx)
     ├── docs/decisions/        # Architecture Decision Records (ADRs)
-    ├── scripts/               # Tooling scripts (pandoc-md)
+    ├── scripts/               # Tooling scripts (pandoc-md, generate-responses)
     ├── src/
     │   ├── create-mock.ts     # Fastify factory + start helper
-    │   ├── messages.ts        # POST /v1/messages (canned SSE)
+    │   ├── messages.ts        # POST /v1/messages (incremental SSE)
     │   ├── models.ts          # GET /v1/models
+    │   ├── responses/         # Generated markdown canned responses
     │   ├── server.ts          # Standalone entry point (bin/anthropic-mock)
     │   ├── types.ts           # Shared types
     │   └── tests/             # Integration tests

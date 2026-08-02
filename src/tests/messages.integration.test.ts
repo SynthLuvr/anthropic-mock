@@ -9,6 +9,9 @@ const sseEventTypes = (body: string): readonly string[] =>
     .filter((line) => line.startsWith("event: "))
     .map((line) => line.slice("event: ".length));
 
+const collapseRuns = <T>(values: readonly T[]): readonly T[] =>
+  values.filter((value, index) => index === 0 || value !== values[index - 1]);
+
 describe("POST /v1/messages (integration)", () => {
   let server: TestServer;
 
@@ -32,7 +35,7 @@ describe("POST /v1/messages (integration)", () => {
       })
       .text();
 
-    expect(sseEventTypes(body)).toEqual([
+    expect(collapseRuns(sseEventTypes(body))).toEqual([
       "message_start",
       "content_block_start",
       "content_block_delta",
@@ -40,6 +43,12 @@ describe("POST /v1/messages (integration)", () => {
       "message_delta",
       "message_stop",
     ]);
+    // The greeting is large enough to span several text deltas — only
+    // possible because the body is now streamed in chunks.
+    const deltaCount = sseEventTypes(body).filter(
+      (type) => type === "content_block_delta",
+    ).length;
+    expect(deltaCount).toBeGreaterThan(1);
     expect(body).toContain('"type":"text_delta"');
     expect(body).toContain('"stop_reason":"end_turn"');
     expect(body).toContain("data: [DONE]");

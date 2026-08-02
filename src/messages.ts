@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import type { ServerResponse } from "node:http";
+import { resolve } from "node:path";
+
 import type { FastifyInstance } from "fastify";
 
 import type { AnthropicMockOptions, AnthropicRequest } from "./types";
@@ -7,25 +11,63 @@ const DEFAULT_RESPONSE = "Hi! This is a canned response from anthropic-mock.";
 const DEFAULT_MESSAGE_ID = "msg_mock_0001";
 const DEFAULT_INPUT_TOKENS = 10;
 const DEFAULT_OUTPUT_TOKENS = 1;
+// How many characters of the canned text each `content_block_delta` carries.
+// Mirrors the real API, which streams token fragments rather than a single
+// blob.
+const DEFAULT_CHUNK_SIZE = 16;
+// Milliseconds paused between frames. This delay — plus `setNoDelay` below —
+// is what makes the stream arrive incrementally instead of in one burst.
+const DEFAULT_CHUNK_DELAY_MS = 5;
 
 type SseEvent = {
   readonly event: string;
   readonly data: object;
 };
 
-const serializeEvents = (events: readonly SseEvent[]): string =>
-  `${events
-    .map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}`)
-    .join("\n\n")}\n\ndata: [DONE]\n\n`;
+const DONE_FRAME = "data: [DONE]\n\n";
+
+const serializeEvent = (event: SseEvent): string =>
+  `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const resolveModel = (body: AnthropicRequest): string =>
   typeof body.model === "string" && body.model.length > 0
     ? body.model
     : DEFAULT_MODEL;
 
+// Splits the canned text into fixed-width character runs. Concatenating the
+// deltas back together reproduces the original byte-for-byte, which the
+// streaming tests assert.
+const splitText = (text: string, size: number): readonly string[] => {
+  if (size <= 0 || text.length === 0) return [text];
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += size)
+    chunks.push(text.slice(i, i + size));
+  return chunks;
+};
+
+const resolveCannedResponse = (options: AnthropicMockOptions): string => {
+  if (options.cannedResponseFile)
+    return readFileSync(resolve(options.cannedResponseFile), "utf8");
+  return options.cannedResponse ?? DEFAULT_RESPONSE;
+};
+
+const textDelta = (text: string): SseEvent => ({
+  event: "content_block_delta",
+  data: {
+    type: "content_block_delta",
+    index: 0,
+    delta: { type: "text_delta", text },
+  },
+});
+
 const buildMessageEvents = (
   model: string,
-  text: string,
+  chunks: readonly string[],
   inputTokens: number,
   outputTokens: number,
 ): readonly SseEvent[] => [
@@ -54,14 +96,7 @@ const buildMessageEvents = (
       content_block: { type: "text", text: "" },
     },
   },
-  {
-    event: "content_block_delta",
-    data: {
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "text_delta", text },
-    },
-  },
+  ...chunks.map(textDelta),
   {
     event: "content_block_stop",
     data: { type: "content_block_stop", index: 0 },
@@ -77,26 +112,56 @@ const buildMessageEvents = (
   { event: "message_stop", data: { type: "message_stop" } },
 ];
 
+// Writes the events straight to the raw socket one frame at a time, pausing
+// between frames. `reply.hijack()` hands us `reply.raw` and Fastify then
+// steps out of the way, so each `write()` is flushed to the wire on its own
+// schedule rather than being buffered into a single reply body.
+const streamEvents = async (
+  raw: ServerResponse,
+  events: readonly SseEvent[],
+  delayMs: number,
+): Promise<void> => {
+  raw.writeHead(200, {
+    "cache-control": "no-cache",
+    "content-type": "text/event-stream",
+  });
+  // Disable Nagle so each frame is pushed out immediately; otherwise small
+  // frames could be coalesced and arrive as one burst, defeating the stream.
+  raw.socket?.setNoDelay(true);
+  for (const event of events) {
+    raw.write(serializeEvent(event));
+    if (delayMs > 0) await sleep(delayMs);
+  }
+  raw.end(DONE_FRAME);
+};
+
 const registerMessagesRoute = (
   app: FastifyInstance,
   options: AnthropicMockOptions,
 ): void => {
-  const text = options.cannedResponse ?? DEFAULT_RESPONSE;
+  const text = resolveCannedResponse(options);
   const inputTokens = options.inputTokens ?? DEFAULT_INPUT_TOKENS;
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
+  const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
+  const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
 
   app.post("/v1/messages", async (request, reply) => {
     const body = (request.body ?? {}) as AnthropicRequest;
     const events = buildMessageEvents(
       resolveModel(body),
-      text,
+      splitText(text, chunkSize),
       inputTokens,
       outputTokens,
     );
-    return reply
-      .type("text/event-stream")
-      .header("cache-control", "no-cache")
-      .send(serializeEvents(events));
+    reply.hijack();
+    try {
+      await streamEvents(reply.raw, events, chunkDelayMs);
+    } catch {
+      // The client went away mid-stream (or the socket dropped). We have
+      // already hijacked the reply, so there is no error response to send;
+      // tear the socket down instead.
+      reply.raw.destroy();
+    }
   });
 };
 

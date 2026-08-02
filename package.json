@@ -14,6 +14,7 @@
     "format:braces": "pnpm strip-braces .",
     "format:check": "pnpm biome check --write .",
     "format": "npm-run-all format:arrows format:braces format:biome format:check format:md",
+    "gen:responses": "tsx scripts/generate-responses.mts",
     "lint:biome": "pnpm biome check .",
     "lint:oxlint": "pnpm oxlint .",
     "lint": "npm-run-all lint:biome lint:oxlint lint:exports lint:functions lint:file-comment lint:md",
