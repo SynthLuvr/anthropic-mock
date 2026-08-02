@@ -1,9 +1,3 @@
-type AnthropicModel = {
-  readonly id: string;
-  readonly type: "model";
-  readonly display_name: string;
-};
-
 type AnthropicMockOptions = {
   readonly host?: string;
   readonly port?: number;
@@ -21,4 +15,4 @@ type RunningAnthropicMock = {
   readonly close: () => Promise<void>;
 };
 
-export type { AnthropicMockOptions, AnthropicModel, RunningAnthropicMock };
+export type { AnthropicMockOptions, RunningAnthropicMock };

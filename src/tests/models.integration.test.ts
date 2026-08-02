@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { AnthropicModel } from "../types";
+import { modelsResponse } from "../schemas";
 import { startTestServer, type TestServer } from "./helpers";
 
 describe("GET /v1/models (integration)", () => {
@@ -15,9 +15,9 @@ describe("GET /v1/models (integration)", () => {
   });
 
   it("returns the default model list", async () => {
-    const parsed = await server.client
-      .get("v1/models")
-      .json<{ data: AnthropicModel[] }>();
+    const parsed = modelsResponse.assert(
+      await server.client.get("v1/models").json(),
+    );
     expect(parsed.data.map((m) => m.id)).toEqual([
       "claude-sonnet-4-5",
       "claude-opus-4-5",
@@ -29,9 +29,9 @@ describe("GET /v1/models (integration)", () => {
     const custom = await startTestServer({
       models: ["custom-model-a", "custom-model-b"],
     });
-    const parsed = await custom.client
-      .get("v1/models")
-      .json<{ data: AnthropicModel[] }>();
+    const parsed = modelsResponse.assert(
+      await custom.client.get("v1/models").json(),
+    );
     expect(parsed.data.map((m) => m.id)).toEqual([
       "custom-model-a",
       "custom-model-b",
@@ -40,9 +40,9 @@ describe("GET /v1/models (integration)", () => {
   });
 
   it("shapes each entry like the Anthropic API", async () => {
-    const parsed = await server.client
-      .get("v1/models")
-      .json<{ data: AnthropicModel[] }>();
+    const parsed = modelsResponse.assert(
+      await server.client.get("v1/models").json(),
+    );
     expect(parsed.data[0]).toEqual({
       id: "claude-sonnet-4-5",
       type: "model",

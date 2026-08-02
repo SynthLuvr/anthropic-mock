@@ -17,6 +17,14 @@ const listeningAddress = type({
   port: "number",
 });
 
+const anthropicModel = type({
+  id: "string",
+  type: "'model'",
+  display_name: "string",
+});
+
+const modelsResponse = type({ data: anthropicModel.array() });
+
 const parseRequest = (raw: unknown): AnthropicRequest => {
   const result = anthropicRequest(raw);
   // A mock is deliberately lenient: a malformed body falls back to defaults
@@ -28,6 +36,7 @@ const parsePort = (address: AddressInfo | string | null): number =>
   listeningAddress.assert(address).port;
 
 type AnthropicRequest = typeof anthropicRequest.infer;
+type AnthropicModel = typeof anthropicModel.infer;
 
-export type { AnthropicRequest };
-export { parsePort, parseRequest };
+export type { AnthropicModel, AnthropicRequest };
+export { modelsResponse, parsePort, parseRequest };

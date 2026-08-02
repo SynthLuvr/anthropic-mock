@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
-import type { AnthropicMockOptions, AnthropicModel } from "./types";
+import type { AnthropicModel } from "./schemas";
+import type { AnthropicMockOptions } from "./types";
 
 const DEFAULT_MODELS = [
   "claude-sonnet-4-5",
