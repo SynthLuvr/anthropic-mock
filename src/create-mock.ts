@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import type { AddressInfo } from "net";
 import { registerMessagesRoute } from "./messages";
 import { registerModelsRoute } from "./models";
 import type { AnthropicMockOptions, RunningAnthropicMock } from "./types";
@@ -20,9 +21,7 @@ const startAnthropicMock = async (
   const app = createAnthropicMock(options);
   const host = options.host ?? DEFAULT_HOST;
   await app.listen({ port: options.port ?? 0, host });
-  const address = app.server.address();
-  const port =
-    address && typeof address === "object" ? address.port : (options.port ?? 0);
+  const port = (app.server.address() as AddressInfo).port;
   const url = `http://${host}:${port}`;
   const close = async (): Promise<void> => {
     await app.close();

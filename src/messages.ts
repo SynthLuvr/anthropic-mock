@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 import type { AnthropicMockOptions, AnthropicRequest } from "./types";
 
@@ -18,7 +18,7 @@ const serializeEvents = (events: readonly SseEvent[]): string =>
     .map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}`)
     .join("\n\n")}\n\ndata: [DONE]\n\n`;
 
-const resolveModel = (body: Partial<AnthropicRequest>): string =>
+const resolveModel = (body: AnthropicRequest): string =>
   typeof body.model === "string" && body.model.length > 0
     ? body.model
     : DEFAULT_MODEL;
@@ -41,6 +41,7 @@ const buildMessageEvents = (
         content: [],
         stop_reason: null,
         stop_sequence: null,
+        // preliminary usage; final counts arrive in message_delta
         usage: { input_tokens: inputTokens, output_tokens: 1 },
       },
     },
@@ -84,22 +85,19 @@ const registerMessagesRoute = (
   const inputTokens = options.inputTokens ?? DEFAULT_INPUT_TOKENS;
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
 
-  app.post(
-    "/v1/messages",
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const body = (request.body ?? {}) as Partial<AnthropicRequest>;
-      const events = buildMessageEvents(
-        resolveModel(body),
-        text,
-        inputTokens,
-        outputTokens,
-      );
-      return reply
-        .type("text/event-stream")
-        .header("cache-control", "no-cache")
-        .send(serializeEvents(events));
-    },
-  );
+  app.post("/v1/messages", async (request, reply) => {
+    const body = (request.body ?? {}) as AnthropicRequest;
+    const events = buildMessageEvents(
+      resolveModel(body),
+      text,
+      inputTokens,
+      outputTokens,
+    );
+    return reply
+      .type("text/event-stream")
+      .header("cache-control", "no-cache")
+      .send(serializeEvents(events));
+  });
 };
 
 export { registerMessagesRoute };

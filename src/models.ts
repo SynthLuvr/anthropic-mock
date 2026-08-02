@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 import type { AnthropicMockOptions, AnthropicModel } from "./types";
 
@@ -19,7 +19,7 @@ const registerModelsRoute = (
   options: AnthropicMockOptions,
 ): void => {
   const models = options.models ?? DEFAULT_MODELS;
-  app.get("/v1/models", async (_request: FastifyRequest, reply: FastifyReply) =>
+  app.get("/v1/models", async (_request, reply) =>
     reply.send({ data: models.map(toModel) }),
   );
 };
