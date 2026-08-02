@@ -9,9 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startAnthropicMock } from "../create-mock";
 import type { RunningAnthropicMock } from "../types";
 
-// `command -v` is POSIX, so this resolves on Linux and macOS. Probed once at
-// import time so describe.skipIf gets a synchronous boolean without needing
-// the full execa flow to fail.
+// Synchronous so describe.skipIf can branch at import time.
 const gooseInstalled = (() => {
   try {
     execSync("command -v goose", { stdio: "ignore" });
@@ -21,14 +19,12 @@ const gooseInstalled = (() => {
   }
 })();
 
-// A canned reply that only the mock can produce, so finding it in goose's
-// output proves the real goose binary routed through the mock instead of the
-// live Anthropic API.
+// Only the mock can emit this token, so finding it in goose's output proves
+// it reached the mock rather than the live Anthropic API.
 const CANNED_REPLY = "mock-reply-9f3a-goose-integration";
 
-// Each scratch tree isolates every XDG base directory goose consults so the
-// test never reads or mutates the user's real ~/.config/goose. Goose writes
-// its sessions DB under XDG_DATA_HOME and logs under XDG_STATE_HOME.
+// Isolates every XDG directory goose consults so the test never reads or
+// mutates the user's real ~/.config/goose.
 type Scratch = {
   readonly root: string;
   readonly configHome: string;
@@ -45,11 +41,9 @@ const createScratch = (): Scratch => {
   return { root, configHome, dataHome, stateHome };
 };
 
-// Writes a self-contained "profile": the built-in anthropic provider is the
-// active provider with the requested model. ANTHROPIC_HOST (set at run time)
-// is what actually redirects that provider's traffic to the mock, and the
-// dummy ANTHROPIC_API_KEY satisfies goose's credential gate without ever
-// touching the system keyring.
+// The dummy ANTHROPIC_API_KEY satisfies goose's credential gate without
+// touching the system keyring; ANTHROPIC_HOST (set at run time) is what
+// actually points the provider at the mock.
 const writeGooseProfile = (configHome: string, model: string): void => {
   const lines = [
     "active_provider: anthropic",
@@ -83,14 +77,20 @@ const runGoose = (
     },
   });
 
-// execa types stdout/stderr as string | array | buffer to accommodate other
-// encodings; with the default utf8 encoding they are always strings.
+// execa widens stdout/stderr to a union for non-default encodings; under the
+// default utf8 encoding they are always strings.
 const asText = (value: unknown): string =>
   typeof value === "string" ? value : "";
 
-// Mirrors GLV's approach of driving the real goose binary from a child
-// process, but stays independent of GLV: goose is launched via execa with an
-// isolated XDG profile wired to this project's mock, not GLV's mock script.
+const expectMockReply = (
+  result: Awaited<ReturnType<typeof runGoose>>,
+): void => {
+  expect(result.exitCode, asText(result.stderr) || asText(result.stdout)).toBe(
+    0,
+  );
+  expect(result.stdout).toContain(CANNED_REPLY);
+};
+
 describe.skipIf(!gooseInstalled)("goose CLI integration (real binary)", () => {
   let server: RunningAnthropicMock;
   let scratch: Scratch;
@@ -113,11 +113,7 @@ describe.skipIf(!gooseInstalled)("goose CLI integration (real binary)", () => {
       "Reply with the test token.",
     );
 
-    expect(
-      result.exitCode,
-      asText(result.stderr) || asText(result.stdout),
-    ).toBe(0);
-    expect(result.stdout).toContain(CANNED_REPLY);
+    expectMockReply(result);
   });
 
   it("honours the model declared in the profile", async () => {
@@ -128,11 +124,7 @@ describe.skipIf(!gooseInstalled)("goose CLI integration (real binary)", () => {
       "Reply with the test token.",
     );
 
-    expect(
-      result.exitCode,
-      asText(result.stderr) || asText(result.stdout),
-    ).toBe(0);
-    expect(result.stdout).toContain(CANNED_REPLY);
+    expectMockReply(result);
     expect(result.stdout).toContain("claude-opus-4-5");
   });
 });
