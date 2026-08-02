@@ -14,8 +14,8 @@ direct Anthropic API:
 
 Responses are **canned** (fixed) for now, which keeps the mock fast,
 deterministic, and dependency-free. Canned text can be supplied inline
-or loaded from a markdown file; the fixtures in `src/responses/` are
-randomly generated (`pnpm gen:responses`).
+or loaded from a markdown file (see `src/responses/` for example
+fixtures).
 
 ## Features
 
@@ -255,13 +255,7 @@ The `format` script runs all formatters in sequence:
 
 ### Canned responses
 
-`src/responses/` holds markdown fixtures used as canned responses. They
-are produced by a seeded generator so the committed files are stable
-across regenerations:
-
-| Script               | Description                                             |
-|----------------------|---------------------------------------------------------|
-| `pnpm gen:responses` | Regenerate `src/responses/*.md` (seeded, stable output) |
+`src/responses/` holds markdown fixtures used as canned responses.
 
 ## Coding Conventions
 
