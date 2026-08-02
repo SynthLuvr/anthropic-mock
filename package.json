@@ -9,7 +9,6 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/server.ts",
     "format:arrows": "pnpm convert-to-arrow .",
     "format:biome": "pnpm biome format --write .",
     "format:braces": "pnpm strip-braces .",
