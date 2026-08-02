@@ -1,8 +1,8 @@
 import type { AddressInfo } from "node:net";
-import ky from "ky";
 import { describe, expect, it } from "vitest";
 
 import { createAnthropicMock, startAnthropicMock } from "../index";
+import { createClient } from "./helpers";
 
 describe("startAnthropicMock (integration)", () => {
   it("starts on an ephemeral port and reports a reachable url", async () => {
@@ -10,7 +10,7 @@ describe("startAnthropicMock (integration)", () => {
 
     expect(mock.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
 
-    const response = await ky.get(`${mock.url}/v1/models`, { retry: 0 });
+    const response = await createClient(mock.url).get("v1/models");
     expect(response.status).toBe(200);
     const text = await response.text();
     expect(text).toContain("claude-sonnet-4-5");
@@ -26,16 +26,15 @@ describe("startAnthropicMock (integration)", () => {
 
   it("close() stops the server so subsequent requests fail", async () => {
     const mock = await startAnthropicMock();
+    const client = createClient(mock.url);
 
-    const ok = await ky.get(`${mock.url}/v1/models`, { retry: 0 });
+    const ok = await client.get("v1/models");
     expect(ok.status).toBe(200);
     await ok.text();
 
     await mock.close();
 
-    await expect(
-      ky.get(`${mock.url}/v1/models`, { retry: 0, timeout: 2000 }),
-    ).rejects.toThrow();
+    await expect(client.get("v1/models", { timeout: 2000 })).rejects.toThrow();
   });
 });
 
@@ -47,7 +46,7 @@ describe("createAnthropicMock (integration)", () => {
     const port = (app.server.address() as AddressInfo).port;
     const url = `http://127.0.0.1:${port}`;
 
-    const response = await ky.get(`${url}/v1/models`, { retry: 0 });
+    const response = await createClient(url).get("v1/models");
     expect(response.status).toBe(200);
     await response.text();
 

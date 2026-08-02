@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { startTestServer, type TestServer } from "./helpers";
 
+const sseEventTypes = (body: string): readonly string[] =>
+  body
+    .split("\n\n")
+    .map((block) => block.split("\n")[0])
+    .filter((line) => line.startsWith("event: "))
+    .map((line) => line.slice("event: ".length));
+
 describe("POST /v1/messages (integration)", () => {
   let server: TestServer;
 
@@ -25,13 +32,7 @@ describe("POST /v1/messages (integration)", () => {
       })
       .text();
 
-    const events = body.split("\n\n").filter((block) => block.length > 0);
-    const types = events
-      .map((block) => block.split("\n")[0])
-      .filter((line) => line.startsWith("event: "))
-      .map((line) => line.slice("event: ".length));
-
-    expect(types).toEqual([
+    expect(sseEventTypes(body)).toEqual([
       "message_start",
       "content_block_start",
       "content_block_delta",
