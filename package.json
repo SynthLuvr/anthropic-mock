@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "start": "tsx src/server.ts",
     "format:arrows": "pnpm convert-to-arrow .",
     "format:biome": "pnpm biome format --write .",
     "format:braces": "pnpm strip-braces .",
@@ -38,5 +39,8 @@
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "fastify": "5.11.0"
   }
 }
