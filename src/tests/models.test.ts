@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAnthropicMock } from "../index";
+import { createAnthropicMock } from "../create-mock";
 
 describe("GET /v1/models", () => {
   it("returns the default model list", async () => {

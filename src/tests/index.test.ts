@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAnthropicMock, startAnthropicMock } from "../index";
+import { createAnthropicMock, startAnthropicMock } from "../create-mock";
 
 describe("createAnthropicMock", () => {
   it("returns an injectable Fastify app exposing the models route", async () => {
