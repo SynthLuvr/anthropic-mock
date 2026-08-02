@@ -11,11 +11,7 @@ const anthropicRequest = type({
   "tools?": "unknown[]",
 });
 
-const listeningAddress = type({
-  address: "string",
-  family: "string",
-  port: "number",
-});
+type AnthropicRequest = typeof anthropicRequest.infer;
 
 const anthropicModel = type({
   id: "string",
@@ -23,7 +19,15 @@ const anthropicModel = type({
   display_name: "string",
 });
 
+type AnthropicModel = typeof anthropicModel.infer;
+
 const modelsResponse = type({ data: anthropicModel.array() });
+
+const listeningAddress = type({
+  address: "string",
+  family: "string",
+  port: "number",
+});
 
 const parseRequest = (raw: unknown): AnthropicRequest => {
   const result = anthropicRequest(raw);
@@ -34,9 +38,6 @@ const parseRequest = (raw: unknown): AnthropicRequest => {
 
 const parsePort = (address: AddressInfo | string | null): number =>
   listeningAddress.assert(address).port;
-
-type AnthropicRequest = typeof anthropicRequest.infer;
-type AnthropicModel = typeof anthropicModel.infer;
 
 export type { AnthropicModel, AnthropicRequest };
 export { modelsResponse, parsePort, parseRequest };
