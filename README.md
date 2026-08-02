@@ -41,26 +41,27 @@ rationale, the evidence, and the alternatives considered.
 
 ## Tech Stack
 
-| Tool                                                             | Purpose                            |
-|------------------------------------------------------------------|------------------------------------|
-| [pnpm](https://pnpm.io)                                          | Package manager                    |
-| [Fastify](https://fastify.dev)                                   | HTTP server for the mock           |
-| [TypeScript](https://www.typescriptlang.org)                     | Type checking (`tsc --noEmit`)     |
-| [Biome](https://biomejs.dev)                                     | Primary formatter and linter       |
-| [oxlint](https://oxc.rs/docs/usage/linter)                       | Secondary type-aware linter        |
-| [ast-grep](https://ast-grep.github.io)                           | Structural lint/format rules       |
+| Tool | Purpose |
+|----|----|
+| [pnpm](https://pnpm.io) | Package manager |
+| [Fastify](https://fastify.dev) | HTTP server for the mock |
+| [TypeScript](https://www.typescriptlang.org) | Type checking (`tsc --noEmit`) |
+| [Biome](https://biomejs.dev) | Primary formatter and linter |
+| [oxlint](https://oxc.rs/docs/usage/linter) | Secondary type-aware linter |
+| [ast-grep](https://ast-grep.github.io) | Structural lint/format rules |
 | [convert-to-arrow](https://github.com/chimurai/convert-to-arrow) | Codemod: `function` → arrow consts |
-| [Vitest](https://vitest.dev)                                     | Test runner (integration)          |
-| [tsx](https://github.com/privatenumber/tsx)                      | Dev-time TypeScript execution      |
-| [npm-run-all2](https://github.com/bcomnes/npm-run-all2)          | Orchestrates multi-step scripts    |
-| [pandoc](https://pandoc.org)                                     | Markdown formatter (GFM)           |
+| [Vitest](https://vitest.dev) | Test runner (integration) |
+| [tsx](https://github.com/privatenumber/tsx) | Dev-time TypeScript execution |
+| [npm-run-all2](https://github.com/bcomnes/npm-run-all2) | Orchestrates multi-step scripts |
+| [pandoc](https://pandoc.org) | Markdown formatter (GFM) |
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org) 26 and [pnpm](https://pnpm.io) (enforced
   via `engines`)
-- [pandoc](https://pandoc.org) ≥ 3.1 — required by `pnpm lint:md` /
-  `pnpm format:md`
+- [pandoc](https://pandoc.org) 3.10.1 — required by `pnpm lint:md` /
+  `pnpm format:md` (CI pins this exact version for consistent GFM
+  output)
 
 ## Quick Start
 
@@ -139,14 +140,14 @@ where `url` is the base URL (e.g. `http://127.0.0.1:54321`).
 
 ### `AnthropicMockOptions`
 
-| Option           | Type                | Default               | Description                                       |
-|------------------|---------------------|-----------------------|---------------------------------------------------|
-| `host`           | `string`            | `127.0.0.1`           | Listen host (`startAnthropicMock` only)           |
-| `port`           | `number`            | `0` (ephemeral)       | Listen port (`0` lets the OS choose)              |
-| `models`         | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models`            |
-| `cannedResponse` | `string`            | Canned greeting       | Text emitted in the `content_block_delta`         |
-| `inputTokens`    | `number`            | `10`                  | `usage.input_tokens` reported in `message_start`  |
-| `outputTokens`   | `number`            | `1`                   | `usage.output_tokens` reported in `message_delta` |
+| Option | Type | Default | Description |
+|----|----|----|----|
+| `host` | `string` | `127.0.0.1` | Listen host (`startAnthropicMock` only) |
+| `port` | `number` | `0` (ephemeral) | Listen port (`0` lets the OS choose) |
+| `models` | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models` |
+| `cannedResponse` | `string` | Canned greeting | Text emitted in the `content_block_delta` |
+| `inputTokens` | `number` | `10` | `usage.input_tokens` reported in `message_start` |
+| `outputTokens` | `number` | `1` | `usage.output_tokens` reported in `message_delta` |
 
 ### `RunningAnthropicMock`
 
@@ -164,27 +165,25 @@ mock is lenient: it reads `model` (falling back to `claude-sonnet-4-5`)
 and echoes it in the response. It always replies with a canned SSE
 stream:
 
-``` text
-event: message_start
-data: {"type":"message_start","message":{"id":"msg_mock_0001","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":10,"output_tokens":1}}}
+    event: message_start
+    data: {"type":"message_start","message":{"id":"msg_mock_0001","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":10,"output_tokens":1}}}
 
-event: content_block_start
-data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+    event: content_block_start
+    data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
-event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi! This is a canned response from anthropic-mock."}}
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi! This is a canned response from anthropic-mock."}}
 
-event: content_block_stop
-data: {"type":"content_block_stop","index":0}
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":0}
 
-event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+    event: message_delta
+    data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
 
-event: message_stop
-data: {"type":"message_stop"}
+    event: message_stop
+    data: {"type":"message_stop"}
 
-data: [DONE]
-```
+    data: [DONE]
 
 ### `GET /v1/models`
 
@@ -225,14 +224,14 @@ The `lint` script runs all linters in sequence via `npm-run-all`:
 
 The `format` script runs all formatters in sequence:
 
-| Script               | Description                                             |
-|----------------------|---------------------------------------------------------|
-| `pnpm format`        | Run all format steps                                    |
+| Script | Description |
+|----|----|
+| `pnpm format` | Run all format steps |
 | `pnpm format:arrows` | `convert-to-arrow` — rewrite `function` to arrow consts |
-| `pnpm format:braces` | ast-grep strip single-statement braces                  |
-| `pnpm format:biome`  | Biome format with auto-fix                              |
-| `pnpm format:check`  | Biome check (lint + format auto-fix)                    |
-| `pnpm format:md`     | pandoc: reformat Markdown to canonical GFM              |
+| `pnpm format:braces` | ast-grep strip single-statement braces |
+| `pnpm format:biome` | Biome format with auto-fix |
+| `pnpm format:check` | Biome check (lint + format auto-fix) |
+| `pnpm format:md` | pandoc: reformat Markdown to canonical GFM |
 
 ### Test
 
