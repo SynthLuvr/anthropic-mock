@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { AnthropicModel } from "../index";
+import type { AnthropicModel } from "../types";
 import { startTestServer, type TestServer } from "./helpers";
 
 describe("GET /v1/models (integration)", () => {

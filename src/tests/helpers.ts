@@ -1,6 +1,7 @@
 import ky, { type KyInstance } from "ky";
 
-import { type AnthropicMockOptions, startAnthropicMock } from "../index";
+import { startAnthropicMock } from "../create-mock";
+import type { AnthropicMockOptions } from "../types";
 
 // ky retries transient connection errors by default; disabling retries keeps
 // failure-path assertions immediate and deterministic.

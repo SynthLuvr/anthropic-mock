@@ -1,7 +1,7 @@
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 
-import { createAnthropicMock, startAnthropicMock } from "../index";
+import { createAnthropicMock, startAnthropicMock } from "../create-mock";
 import { createClient } from "./helpers";
 
 describe("startAnthropicMock (integration)", () => {
