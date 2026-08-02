@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { type } from "arktype";
 import { describe, expect, it } from "vitest";
 
 import { startTestServer } from "./helpers";
@@ -41,13 +42,12 @@ const parseEvents = (body: string): readonly SseEvent[] => {
   return events;
 };
 
+const textDeltaPayload = type({ delta: { text: "string" } });
+
 const deltaText = (events: readonly SseEvent[]): string =>
   events
     .filter((event) => event.event === "content_block_delta")
-    .map(
-      (event) =>
-        (JSON.parse(event.data) as { delta: { text: string } }).delta.text,
-    )
+    .map((event) => textDeltaPayload.assert(JSON.parse(event.data)).delta.text)
     .join("");
 
 const deltaCount = (events: readonly SseEvent[]): number =>

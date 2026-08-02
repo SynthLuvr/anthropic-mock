@@ -1,7 +1,7 @@
-import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 
 import { createAnthropicMock, startAnthropicMock } from "../create-mock";
+import { parsePort } from "../schemas";
 import { createClient } from "./helpers";
 
 describe("startAnthropicMock (integration)", () => {
@@ -43,7 +43,7 @@ describe("createAnthropicMock (integration)", () => {
     const app = createAnthropicMock();
     await app.listen({ port: 0, host: "127.0.0.1" });
 
-    const port = (app.server.address() as AddressInfo).port;
+    const port = parsePort(app.server.address());
     const url = `http://127.0.0.1:${port}`;
 
     const response = await createClient(url).get("v1/models");
