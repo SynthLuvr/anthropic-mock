@@ -286,7 +286,7 @@ These are **enforced** by the toolchain, not just preferences:
     ├── .github/workflows/     # CI
     ├── bin/anthropic-mock     # Server launcher (node --import tsx)
     ├── docs/decisions/        # Architecture Decision Records (ADRs)
-    ├── scripts/               # Tooling scripts (pandoc-md, generate-responses)
+    ├── scripts/               # Tooling scripts
     ├── src/
     │   ├── create-mock.ts     # Fastify factory + start helper
     │   ├── messages.ts        # POST /v1/messages (incremental SSE)
