@@ -26,6 +26,11 @@ fixtures).
   `message_delta` → `message_stop`, terminated by `data: [DONE]`)
   straight to the socket via `reply.hijack()`, so deltas arrive over
   time rather than in a single burst — just like the real API
+- **Mid-stream error simulation** — set `streamErrorAfterMs` on
+  `POST /v1/messages` to stream deltas for that many milliseconds and
+  then tear the socket down mid-flight (no closing frames, no `[DONE]`),
+  leaving the client with a truncated, unparsable response — exactly as
+  if the real API hit a `500`-class error mid-stream
 - **`GET /v1/models`** returning `{"data":[{"id":"..."}]}` (a `404` is
   also accepted by goose, so a working `200` is a safe default)
 - **In-process** testing via Fastify’s `inject()` (no port needed)
@@ -143,17 +148,18 @@ where `url` is the base URL (e.g. `http://127.0.0.1:54321`).
 
 ### `AnthropicMockOptions`
 
-| Option               | Type                | Default               | Description                                       |
-|----------------------|---------------------|-----------------------|---------------------------------------------------|
-| `host`               | `string`            | `127.0.0.1`           | Listen host (`startAnthropicMock` only)           |
-| `port`               | `number`            | `0` (ephemeral)       | Listen port (`0` lets the OS choose)              |
-| `models`             | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models`            |
-| `cannedResponse`     | `string`            | Canned greeting       | Text split across `content_block_delta` frames    |
-| `cannedResponseFile` | `string`            | —                     | Path to a file whose contents are the canned text |
-| `inputTokens`        | `number`            | `10`                  | `usage.input_tokens` reported in `message_start`  |
-| `outputTokens`       | `number`            | `1`                   | `usage.output_tokens` reported in `message_delta` |
-| `streamChunkSize`    | `number`            | `16`                  | Characters per `content_block_delta` text chunk   |
-| `streamChunkDelayMs` | `number`            | `5`                   | Milliseconds paused between streamed frames       |
+| Option               | Type                | Default               | Description                                                                                          |
+|----------------------|---------------------|-----------------------|------------------------------------------------------------------------------------------------------|
+| `host`               | `string`            | `127.0.0.1`           | Listen host (`startAnthropicMock` only)                                                              |
+| `port`               | `number`            | `0` (ephemeral)       | Listen port (`0` lets the OS choose)                                                                 |
+| `models`             | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models`                                                               |
+| `cannedResponse`     | `string`            | Canned greeting       | Text split across `content_block_delta` frames                                                       |
+| `cannedResponseFile` | `string`            | —                     | Path to a file whose contents are the canned text                                                    |
+| `inputTokens`        | `number`            | `10`                  | `usage.input_tokens` reported in `message_start`                                                     |
+| `outputTokens`       | `number`            | `1`                   | `usage.output_tokens` reported in `message_delta`                                                    |
+| `streamChunkSize`    | `number`            | `16`                  | Characters per `content_block_delta` text chunk                                                      |
+| `streamChunkDelayMs` | `number`            | `5`                   | Milliseconds paused between streamed frames                                                          |
+| `streamErrorAfterMs` | `number`            | —                     | When set, stream deltas this long, then abort the socket mid-flight (truncated, unparsable response) |
 
 ### `RunningAnthropicMock`
 
@@ -198,6 +204,14 @@ data: {"type":"message_stop"}
 
 data: [DONE]
 ```
+
+When `streamErrorAfterMs` is set, the stream instead emits
+`message_start`, `content_block_start`, and a run of
+`content_block_delta` frames for that many milliseconds, then closes the
+connection abruptly — with **none** of the closing frames
+(`content_block_stop`, `message_delta`, `message_stop`) or the `[DONE]`
+sentinel. The client receives a truncated, unparsable response,
+replicating a mid-stream `500`-class server error.
 
 ### `GET /v1/models`
 

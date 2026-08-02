@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
@@ -63,52 +64,88 @@ const textDelta = (text: string): SseEvent => ({
   },
 });
 
+const messageStartEvent = (model: string, inputTokens: number): SseEvent => ({
+  event: "message_start",
+  data: {
+    type: "message_start",
+    message: {
+      id: DEFAULT_MESSAGE_ID,
+      type: "message",
+      role: "assistant",
+      model,
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      // preliminary usage; final counts arrive in message_delta
+      usage: { input_tokens: inputTokens, output_tokens: 1 },
+    },
+  },
+});
+
+const contentBlockStartEvent = (): SseEvent => ({
+  event: "content_block_start",
+  data: {
+    type: "content_block_start",
+    index: 0,
+    content_block: { type: "text", text: "" },
+  },
+});
+
+const contentBlockStopEvent = (): SseEvent => ({
+  event: "content_block_stop",
+  data: { type: "content_block_stop", index: 0 },
+});
+
+const messageDeltaEvent = (outputTokens: number): SseEvent => ({
+  event: "message_delta",
+  data: {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn", stop_sequence: null },
+    usage: { output_tokens: outputTokens },
+  },
+});
+
+const messageStopEvent = (): SseEvent => ({
+  event: "message_stop",
+  data: { type: "message_stop" },
+});
+
 const buildMessageEvents = (
   model: string,
   chunks: readonly string[],
   inputTokens: number,
   outputTokens: number,
 ): readonly SseEvent[] => [
-  {
-    event: "message_start",
-    data: {
-      type: "message_start",
-      message: {
-        id: DEFAULT_MESSAGE_ID,
-        type: "message",
-        role: "assistant",
-        model,
-        content: [],
-        stop_reason: null,
-        stop_sequence: null,
-        // preliminary usage; final counts arrive in message_delta
-        usage: { input_tokens: inputTokens, output_tokens: 1 },
-      },
-    },
-  },
-  {
-    event: "content_block_start",
-    data: {
-      type: "content_block_start",
-      index: 0,
-      content_block: { type: "text", text: "" },
-    },
-  },
+  messageStartEvent(model, inputTokens),
+  contentBlockStartEvent(),
   ...chunks.map(textDelta),
-  {
-    event: "content_block_stop",
-    data: { type: "content_block_stop", index: 0 },
-  },
-  {
-    event: "message_delta",
-    data: {
-      type: "message_delta",
-      delta: { stop_reason: "end_turn", stop_sequence: null },
-      usage: { output_tokens: outputTokens },
-    },
-  },
-  { event: "message_stop", data: { type: "message_stop" } },
+  contentBlockStopEvent(),
+  messageDeltaEvent(outputTokens),
+  messageStopEvent(),
 ];
+
+// Write one SSE frame straight to the hijacked socket. Awaits drain on
+// backpressure so a long error-mode stream cannot exhaust memory buffering
+// frames the socket has not flushed, and always yields to the event loop so
+// deltas arrive over time rather than in a single burst.
+const writeFrame = async (
+  raw: ServerResponse,
+  event: SseEvent,
+  delayMs: number,
+): Promise<void> => {
+  if (!raw.write(serializeEvent(event))) await once(raw, "drain");
+  await sleep(delayMs);
+};
+
+const beginStream = (raw: ServerResponse): void => {
+  raw.writeHead(200, {
+    "cache-control": "no-cache",
+    "content-type": "text/event-stream",
+  });
+  // Disable Nagle so each frame is pushed out immediately; otherwise small
+  // frames could be coalesced and arrive as one burst, defeating the stream.
+  raw.socket?.setNoDelay(true);
+};
 
 // reply.hijack() bypasses Fastify's serialization, so each write() is flushed
 // to the wire on its own schedule instead of buffering into one reply body.
@@ -117,18 +154,37 @@ const streamEvents = async (
   events: readonly SseEvent[],
   delayMs: number,
 ): Promise<void> => {
-  raw.writeHead(200, {
-    "cache-control": "no-cache",
-    "content-type": "text/event-stream",
-  });
-  // Disable Nagle so each frame is pushed out immediately; otherwise small
-  // frames could be coalesced and arrive as one burst, defeating the stream.
-  raw.socket?.setNoDelay(true);
-  for (const event of events) {
-    raw.write(serializeEvent(event));
-    if (delayMs > 0) await sleep(delayMs);
-  }
+  beginStream(raw);
+  for (const event of events) await writeFrame(raw, event, delayMs);
   raw.end(DONE_FRAME);
+};
+
+// Emit the opening frames plus content_block_delta frames until errorAfterMs
+// elapses, then tear the socket down mid-flight. No content_block_stop,
+// message_delta, message_stop, or [DONE] frame is ever written, so the client
+// is left with a truncated, unparsable response — the on-the-wire signature of
+// a server that hit a 500-class error mid-stream. The canned text repeats so
+// deltas keep flowing for the full duration even when the response is short.
+const streamEventsUntilError = async (
+  raw: ServerResponse,
+  model: string,
+  chunks: readonly string[],
+  inputTokens: number,
+  delayMs: number,
+  errorAfterMs: number,
+): Promise<void> => {
+  beginStream(raw);
+  await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
+  await writeFrame(raw, contentBlockStartEvent(), delayMs);
+  const deadline = Date.now() + errorAfterMs;
+  while (Date.now() < deadline)
+    for (const chunk of chunks) {
+      await writeFrame(raw, textDelta(chunk), delayMs);
+      if (Date.now() >= deadline) break;
+    }
+  // Abruptly destroy the socket without a clean close: the stream is cut off,
+  // the closing frames never arrive, and the accumulated SSE is unparsable.
+  raw.destroy();
 };
 
 const registerMessagesRoute = (
@@ -140,18 +196,29 @@ const registerMessagesRoute = (
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
   const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
+  const errorAfterMs = options.streamErrorAfterMs;
 
   app.post("/v1/messages", async (request, reply) => {
     const body = parseRequest(request.body);
-    const events = buildMessageEvents(
-      resolveModel(body),
-      splitText(text, chunkSize),
-      inputTokens,
-      outputTokens,
-    );
+    const model = resolveModel(body);
+    const chunks = splitText(text, chunkSize);
     reply.hijack();
     try {
-      await streamEvents(reply.raw, events, chunkDelayMs);
+      if (errorAfterMs !== undefined && errorAfterMs > 0)
+        await streamEventsUntilError(
+          reply.raw,
+          model,
+          chunks,
+          inputTokens,
+          chunkDelayMs,
+          errorAfterMs,
+        );
+      else
+        await streamEvents(
+          reply.raw,
+          buildMessageEvents(model, chunks, inputTokens, outputTokens),
+          chunkDelayMs,
+        );
     } catch {
       // Hijacked replies have no error path; just tear the socket down.
       reply.raw.destroy();
