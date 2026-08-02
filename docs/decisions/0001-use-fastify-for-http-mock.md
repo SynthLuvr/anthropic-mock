@@ -110,6 +110,28 @@ path to support in-process testing (raw `http` has no `inject()`
 equivalent). Fastify is essentially raw `node:http` plus those niceties,
 so we take the ergonomics for the modest cost of ~14 MB.
 
+### In-process interceptor libraries (nock, MSW, sinon)
+
+The conventional “mock an HTTP API” tools —
+[nock](https://github.com/nock/nock), [MSW](https://mswjs.io/), and
+[sinon](https://sinonjs.org/)’s fake server — were considered and
+eliminated. They all work by **patching the HTTP client inside a single
+Node process**: nock intercepts the `http`/`https` modules, MSW
+intercepts requests via service-worker-style handlers, and sinon fakes
+`XMLHttpRequest`/`fetch`. None of them is a real server, so none can
+serve a request that originates from **goose, an external binary
+connecting over the real network**. That standalone-server requirement
+disqualifies all three regardless of any other capability.
+
+SSE does not rescue them, and in some cases is unavailable outright.
+Their streaming support is scoped to in-process interception: sinon’s
+fake server has no real streaming; nock can reply with a stream and MSW
+now supports SSE via `ReadableStream`, but only for requests it can
+intercept in-process. Since an interceptor cannot serve an external
+client to begin with, its SSE support cannot reach goose. This confirms
+they were not a fit for a fidelity mock that must stream over a real
+socket.
+
 ## Consequences
 
 **Positive**

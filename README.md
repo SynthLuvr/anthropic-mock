@@ -30,11 +30,12 @@ deterministic, and dependency-free.
 
 ## Design Decisions
 
-The HTTP layer is **Fastify**, chosen over a purpose-built mock library
-(Mockttp) and raw `node:http`. Fastify is the only option that gives
-**true incremental streaming that is also repeatable** (via
-`reply.hijack()` + `reply.raw`), at a fraction of the dependency weight,
-while still supporting in-process tests via `inject()`. See [ADR
+The HTTP layer is **Fastify**, chosen over in-process interceptor
+libraries (nock, MSW, sinon), a purpose-built mock library (Mockttp),
+and raw `node:http`. Fastify is the only option that gives **true
+incremental streaming that is also repeatable** (via `reply.hijack()` +
+`reply.raw`), at a fraction of the dependency weight, while still
+supporting in-process tests via `inject()`. See [ADR
 0001](./docs/decisions/0001-use-fastify-for-http-mock.md) for the full
 rationale, the evidence, and the alternatives considered.
 
