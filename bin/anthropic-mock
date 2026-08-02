@@ -1,0 +1,21 @@
+#!/bin/sh
+# Run the mock server from the project root regardless of where this
+# launcher is invoked from, including via a symlink.
+
+self="$0"
+while [ -L "$self" ]; do
+  dir="$(cd "$(dirname "$self")" && pwd)"
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *)  self="$dir/$target" ;;
+  esac
+done
+project_root="$(cd "$(dirname "$self")/.." && pwd)"
+
+cd "$project_root" || {
+  echo "anthropic-mock: cannot cd to project root ($project_root)" >&2
+  exit 1
+}
+
+exec node --import tsx src/server.ts "$@"
