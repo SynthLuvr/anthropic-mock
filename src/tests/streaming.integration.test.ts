@@ -66,34 +66,6 @@ const drain = async (
   const start = Date.now();
   const reads: Read[] = [];
   for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const text = decoder.decode(value, { stream: true });
-    if (text.length > 0) reads.push({ elapsed: Date.now() - start, text });
-  }
-  return { reads, body: reads.map((read) => read.text).join("") };
-};
-
-const streamBody = async (url: string): Promise<string> => {
-  const response = await postMessages(url);
-  const { body } = await drain(response);
-  return body;
-};
-
-// Like drain(), but tolerates the server tearing the socket down mid-stream:
-// reader.read() may reject (connection reset) or return done early (FIN) once
-// the mock aborts the response. Whatever was flushed before the abort is kept.
-const drainUntilClose = async (
-  response: Response,
-): Promise<{
-  readonly reads: readonly Read[];
-  readonly body: string;
-}> => {
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  const start = Date.now();
-  const reads: Read[] = [];
-  for (;;) {
     try {
       const { done, value } = await reader.read();
       if (done) break;
@@ -104,6 +76,12 @@ const drainUntilClose = async (
     }
   }
   return { reads, body: reads.map((read) => read.text).join("") };
+};
+
+const streamBody = async (url: string): Promise<string> => {
+  const response = await postMessages(url);
+  const { body } = await drain(response);
+  return body;
 };
 
 describe("POST /v1/messages incremental streaming (integration)", () => {
@@ -192,7 +170,7 @@ describe("POST /v1/messages mid-stream error (integration)", () => {
     });
 
     const response = await postMessages(server.url);
-    const { body } = await drainUntilClose(response);
+    const { body } = await drain(response);
     await server.close();
 
     expect(response.status).toBe(200);
@@ -224,7 +202,7 @@ describe("POST /v1/messages mid-stream error (integration)", () => {
 
     const start = Date.now();
     const response = await postMessages(server.url);
-    await drainUntilClose(response);
+    await drain(response);
     const elapsed = Date.now() - start;
     await server.close();
 
@@ -243,7 +221,7 @@ describe("POST /v1/messages mid-stream error (integration)", () => {
     });
 
     const response = await postMessages(server.url);
-    const { body } = await drainUntilClose(response);
+    const { body } = await drain(response);
     await server.close();
 
     expect(deltaCount(parseEvents(body))).toBeGreaterThan(1);

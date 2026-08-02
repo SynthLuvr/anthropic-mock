@@ -8,11 +8,8 @@ type AnthropicMockOptions = {
   readonly outputTokens?: number;
   readonly streamChunkSize?: number;
   readonly streamChunkDelayMs?: number;
-  // When set, every /v1/messages stream emits deltas for this many
-  // milliseconds and then tears the socket down mid-flight — no
-  // content_block_stop / message_stop / [DONE] — leaving the client with
-  // a truncated, unparsable response. Simulates a mid-stream 500-class
-  // server error.
+  // When set, streams deltas for this many milliseconds then tears the
+  // socket down mid-flight (no closing frames) — a mid-stream 500-class error.
   readonly streamErrorAfterMs?: number;
 };
 

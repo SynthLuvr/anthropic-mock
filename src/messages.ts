@@ -124,10 +124,8 @@ const buildMessageEvents = (
   messageStopEvent(),
 ];
 
-// Write one SSE frame straight to the hijacked socket. Awaits drain on
-// backpressure so a long error-mode stream cannot exhaust memory buffering
-// frames the socket has not flushed, and always yields to the event loop so
-// deltas arrive over time rather than in a single burst.
+// Honours backpressure: if the socket buffer fills, wait for drain before
+// the next frame so a long error-mode stream can't exhaust memory.
 const writeFrame = async (
   raw: ServerResponse,
   event: SseEvent,
@@ -159,12 +157,8 @@ const streamEvents = async (
   raw.end(DONE_FRAME);
 };
 
-// Emit the opening frames plus content_block_delta frames until errorAfterMs
-// elapses, then tear the socket down mid-flight. No content_block_stop,
-// message_delta, message_stop, or [DONE] frame is ever written, so the client
-// is left with a truncated, unparsable response — the on-the-wire signature of
-// a server that hit a 500-class error mid-stream. The canned text repeats so
-// deltas keep flowing for the full duration even when the response is short.
+// Streams deltas until errorAfterMs elapses, then tears the socket down
+// mid-flight with no closing frames. Chunks cycle to fill the full window.
 const streamEventsUntilError = async (
   raw: ServerResponse,
   model: string,
@@ -182,8 +176,6 @@ const streamEventsUntilError = async (
       await writeFrame(raw, textDelta(chunk), delayMs);
       if (Date.now() >= deadline) break;
     }
-  // Abruptly destroy the socket without a clean close: the stream is cut off,
-  // the closing frames never arrive, and the accumulated SSE is unparsable.
   raw.destroy();
 };
 
