@@ -115,14 +115,6 @@ For a long-running process, use the `anthropic-mock` launcher
 PORT=3000 ./bin/anthropic-mock
 ```
 
-Run `./setup.sh` to install the launcher onto your `PATH` (symlinks
-`bin/anthropic-mock` to `~/.local/bin/anthropic-mock`):
-
-``` bash
-./setup.sh
-anthropic-mock   # available from anywhere after setup
-```
-
 ### Pointing a client at the mock
 
 Most Anthropic-compatible clients let you override the base host. For
@@ -282,7 +274,6 @@ These are **enforced** by the toolchain, not just preferences:
     │   ├── types.ts           # Shared types
     │   └── tests/             # Unit and integration tests
     ├── biome.json             # Biome formatter + linter config
-    ├── setup.sh               # Install deps + symlink launcher on PATH
     ├── .oxlintrc.json         # oxlint type-aware rules
     ├── tsconfig.json          # TypeScript config
     └── vitest.config.ts       # Test config
