@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAnthropicMock } from "../index";
+import { createAnthropicMock } from "../create-mock";
 
 describe("POST /v1/messages", () => {
   it("streams a canned SSE response in Anthropic event order", async () => {

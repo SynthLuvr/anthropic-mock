@@ -266,7 +266,6 @@ These are **enforced** by the toolchain, not just preferences:
     ├── docs/decisions/        # Architecture Decision Records (ADRs)
     ├── scripts/               # Tooling scripts (pandoc-md)
     ├── src/
-    │   ├── index.ts           # Public exports
     │   ├── create-mock.ts     # Fastify factory + start helper
     │   ├── messages.ts        # POST /v1/messages (canned SSE)
     │   ├── models.ts          # GET /v1/models
