@@ -24,12 +24,8 @@ const parseRequest = (raw: unknown): AnthropicRequest => {
   return result instanceof type.errors ? {} : result;
 };
 
-const parsePort = (address: AddressInfo | string | null): number => {
-  const result = listeningAddress(address);
-  if (result instanceof type.errors)
-    throw new Error("expected the server to be listening on a TCP port");
-  return result.port;
-};
+const parsePort = (address: AddressInfo | string | null): number =>
+  listeningAddress.assert(address).port;
 
 type AnthropicRequest = typeof anthropicRequest.infer;
 
