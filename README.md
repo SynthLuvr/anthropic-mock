@@ -39,7 +39,7 @@ deterministic, and dependency-free.
 | [oxlint](https://oxc.rs/docs/usage/linter)                       | Secondary type-aware linter        |
 | [ast-grep](https://ast-grep.github.io)                           | Structural lint/format rules       |
 | [convert-to-arrow](https://github.com/chimurai/convert-to-arrow) | Codemod: `function` → arrow consts |
-| [Vitest](https://vitest.dev)                                     | Test runner (unit + integration)   |
+| [Vitest](https://vitest.dev)                                     | Test runner (integration)          |
 | [tsx](https://github.com/privatenumber/tsx)                      | Dev-time TypeScript execution      |
 | [npm-run-all2](https://github.com/bcomnes/npm-run-all2)          | Orchestrates multi-step scripts    |
 | [pandoc](https://pandoc.org)                                     | Markdown formatter (GFM)           |
@@ -56,13 +56,13 @@ deterministic, and dependency-free.
 ``` bash
 pnpm install
 pnpm build    # type-check with tsc
-pnpm test     # run unit tests
+pnpm test     # run integration tests
 pnpm start    # run the mock server on http://127.0.0.1:8787
 ```
 
 ## Usage
 
-### In-process (unit tests)
+### In-process usage
 
 `createAnthropicMock()` returns a Fastify instance with both routes
 registered. Use Fastify’s `inject()` to make requests without binding a
@@ -226,10 +226,10 @@ The `format` script runs all formatters in sequence:
 
 ### Test
 
-| Script            | Description    |
-|-------------------|----------------|
-| `pnpm test`       | Run unit tests |
-| `pnpm test:watch` | Watch mode     |
+| Script            | Description           |
+|-------------------|-----------------------|
+| `pnpm test`       | Run integration tests |
+| `pnpm test:watch` | Watch mode            |
 
 ## Coding Conventions
 
@@ -260,7 +260,7 @@ These are **enforced** by the toolchain, not just preferences:
     │   ├── models.ts          # GET /v1/models
     │   ├── server.ts          # Standalone entry point (pnpm start)
     │   ├── types.ts           # Shared types
-    │   └── tests/             # Unit and integration tests
+    │   └── tests/             # Integration tests
     ├── biome.json             # Biome formatter + linter config
     ├── .oxlintrc.json         # oxlint type-aware rules
     ├── tsconfig.json          # TypeScript config
