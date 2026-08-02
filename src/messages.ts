@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 
 import type { FastifyInstance } from "fastify";
 
-import type { AnthropicMockOptions, AnthropicRequest } from "./types";
+import { type AnthropicRequest, parseRequest } from "./schemas";
+import type { AnthropicMockOptions } from "./types";
 
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const DEFAULT_RESPONSE = "Hi! This is a canned response from anthropic-mock.";
@@ -141,7 +142,7 @@ const registerMessagesRoute = (
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
 
   app.post("/v1/messages", async (request, reply) => {
-    const body = (request.body ?? {}) as AnthropicRequest;
+    const body = parseRequest(request.body);
     const events = buildMessageEvents(
       resolveModel(body),
       splitText(text, chunkSize),

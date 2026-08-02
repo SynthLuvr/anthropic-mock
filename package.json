@@ -41,6 +41,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "arktype": "^2.2.3",
     "fastify": "5.11.0"
   }
 }
