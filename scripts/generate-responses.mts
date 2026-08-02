@@ -9,9 +9,8 @@ const RESPONSES_DIR = join(
   "responses",
 );
 
-// Deterministic PRNG (mulberry32) so the committed fixtures are stable across
-// regenerations — rerunning this script reproduces the same files byte for
-// byte, which keeps `pnpm lint` and the reassembly tests reproducible.
+// Seeded mulberry32 PRNG so fixtures are byte-for-byte stable across
+// regenerations, keeping lint and the reassembly tests reproducible.
 const createRng = (seed: number): (() => number) => {
   let state = seed >>> 0;
   return (): number => {

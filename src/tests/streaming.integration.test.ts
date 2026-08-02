@@ -74,6 +74,12 @@ const drain = async (
   return { reads, body: reads.map((read) => read.text).join("") };
 };
 
+const streamBody = async (url: string): Promise<string> => {
+  const response = await postMessages(url);
+  const { body } = await drain(response);
+  return body;
+};
+
 describe("POST /v1/messages incremental streaming (integration)", () => {
   it("delivers the stream over time rather than as a single burst", async () => {
     const server = await startTestServer({
@@ -106,8 +112,7 @@ describe("POST /v1/messages incremental streaming (integration)", () => {
       cannedResponse: content,
       streamChunkSize: 12,
     });
-    const response = await postMessages(server.url);
-    const { body } = await drain(response);
+    const body = await streamBody(server.url);
     await server.close();
 
     const events = parseEvents(body);
@@ -123,8 +128,7 @@ describe("POST /v1/messages incremental streaming (integration)", () => {
       streamChunkSize: 4,
       streamChunkDelayMs: 0,
     });
-    const fineRes = await postMessages(fine.url);
-    const fineBody = await drain(fineRes).then((result) => result.body);
+    const fineBody = await streamBody(fine.url);
     await fine.close();
 
     const coarse = await startTestServer({
@@ -132,8 +136,7 @@ describe("POST /v1/messages incremental streaming (integration)", () => {
       streamChunkSize: 100,
       streamChunkDelayMs: 0,
     });
-    const coarseRes = await postMessages(coarse.url);
-    const coarseBody = await drain(coarseRes).then((result) => result.body);
+    const coarseBody = await streamBody(coarse.url);
     await coarse.close();
 
     const fineCount = deltaCount(parseEvents(fineBody));
@@ -145,8 +148,7 @@ describe("POST /v1/messages incremental streaming (integration)", () => {
   it("streams a canned response loaded from a markdown file", async () => {
     const file = join(RESPONSES_DIR, "recipe.md");
     const server = await startTestServer({ cannedResponseFile: file });
-    const response = await postMessages(server.url);
-    const { body } = await drain(response);
+    const body = await streamBody(server.url);
     await server.close();
 
     expect(deltaText(parseEvents(body))).toBe(readResponse("recipe.md"));

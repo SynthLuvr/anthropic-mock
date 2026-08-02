@@ -43,8 +43,7 @@ describe("POST /v1/messages (integration)", () => {
       "message_delta",
       "message_stop",
     ]);
-    // The greeting is large enough to span several text deltas — only
-    // possible because the body is now streamed in chunks.
+    // The default greeting spans several text deltas once streamed in chunks.
     const deltaCount = sseEventTypes(body).filter(
       (type) => type === "content_block_delta",
     ).length;

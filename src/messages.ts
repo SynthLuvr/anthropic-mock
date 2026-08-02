@@ -11,12 +11,10 @@ const DEFAULT_RESPONSE = "Hi! This is a canned response from anthropic-mock.";
 const DEFAULT_MESSAGE_ID = "msg_mock_0001";
 const DEFAULT_INPUT_TOKENS = 10;
 const DEFAULT_OUTPUT_TOKENS = 1;
-// How many characters of the canned text each `content_block_delta` carries.
-// Mirrors the real API, which streams token fragments rather than a single
-// blob.
+// Token-fragment-sized chunks mirror how the real API streams.
 const DEFAULT_CHUNK_SIZE = 16;
-// Milliseconds paused between frames. This delay — plus `setNoDelay` below —
-// is what makes the stream arrive incrementally instead of in one burst.
+// Combined with setNoDelay below, this delay makes deltas arrive over time
+// rather than in a single burst.
 const DEFAULT_CHUNK_DELAY_MS = 5;
 
 type SseEvent = {
@@ -39,9 +37,8 @@ const resolveModel = (body: AnthropicRequest): string =>
     ? body.model
     : DEFAULT_MODEL;
 
-// Splits the canned text into fixed-width character runs. Concatenating the
-// deltas back together reproduces the original byte-for-byte, which the
-// streaming tests assert.
+// Fixed-width runs: concatenating the deltas reproduces the text exactly,
+// which the streaming tests assert.
 const splitText = (text: string, size: number): readonly string[] => {
   if (size <= 0 || text.length === 0) return [text];
   const chunks: string[] = [];
@@ -112,10 +109,8 @@ const buildMessageEvents = (
   { event: "message_stop", data: { type: "message_stop" } },
 ];
 
-// Writes the events straight to the raw socket one frame at a time, pausing
-// between frames. `reply.hijack()` hands us `reply.raw` and Fastify then
-// steps out of the way, so each `write()` is flushed to the wire on its own
-// schedule rather than being buffered into a single reply body.
+// reply.hijack() bypasses Fastify's serialization, so each write() is flushed
+// to the wire on its own schedule instead of buffering into one reply body.
 const streamEvents = async (
   raw: ServerResponse,
   events: readonly SseEvent[],
@@ -157,9 +152,7 @@ const registerMessagesRoute = (
     try {
       await streamEvents(reply.raw, events, chunkDelayMs);
     } catch {
-      // The client went away mid-stream (or the socket dropped). We have
-      // already hijacked the reply, so there is no error response to send;
-      // tear the socket down instead.
+      // Hijacked replies have no error path; just tear the socket down.
       reply.raw.destroy();
     }
   });
