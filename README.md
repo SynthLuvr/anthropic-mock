@@ -6,6 +6,12 @@ purposes. Stand in for the real Anthropic API in test suites so you can
 exercise client code (such as [goose](https://github.com/block/goose))
 without network access or API costs.
 
+> **Disclaimer:** This is an unofficial, independent project. It is not
+> affiliated with, endorsed by, or sponsored by Anthropic, PBC.
+> “Anthropic” is a trademark of Anthropic, PBC. This project is also not
+> affiliated with [goose](https://github.com/block/goose) or its
+> maintainers; it simply targets the API surface goose calls.
+
 This mock implements the two endpoints goose actually calls against the
 direct Anthropic API:
 
