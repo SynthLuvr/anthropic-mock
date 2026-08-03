@@ -259,20 +259,3 @@ The `format` script runs all formatters in sequence:
 ### Canned responses
 
 `src/responses/` holds markdown fixtures used as canned responses.
-
-## Coding Conventions
-
-These are **enforced** by the toolchain, not just preferences:
-
-- **Arrow functions only** — no `function` declarations
-  (`convert-to-arrow` + ast-grep rule)
-- **Separate exports** — no inline `export` keywords (ast-grep rule)
-- **Single-statement brace stripping** — `if`/`for`/`while` with one
-  body line drop braces (ast-grep rule)
-- **No leading file comments** — source files must not begin with a
-  comment (ast-grep rule)
-- **Double quotes**, 2-space indent, 80-char width, trailing commas,
-  semicolons (Biome)
-- **ESM only** (`"type": "module"`)
-- **Markdown via pandoc** — all `.md` formatted with `pandoc -t gfm`
-  (`lint:md`/`format:md`)
