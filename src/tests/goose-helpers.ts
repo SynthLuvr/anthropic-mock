@@ -1,9 +1,10 @@
 import { execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { execa } from "execa";
+import type { FastifyInstance } from "fastify";
 
 // Synchronous so describe.skipIf can branch at import time.
 const gooseInstalled = (() => {
@@ -75,5 +76,81 @@ const runGoose = (
 const asText = (value: unknown): string =>
   typeof value === "string" ? value : "";
 
+// Defensive backstop: a fast non-retryable 400 caps the runtime if a future
+// goose retried aggressively. The current goose never reaches it.
+const MAX_STREAMING_REQUESTS = 12;
+
+const GOOSE_TIMEOUT_MS = 90_000;
+const TEST_TIMEOUT_MS = 120_000;
+
+type GooseResult = Awaited<ReturnType<typeof runGoose>>;
+
+// goose fires the main response and a background title-generation request
+// concurrently; title requests carry "title" in their system prompt.
+const isMainRequest = (system: unknown): boolean => {
+  const text =
+    typeof system === "string" ? system : JSON.stringify(system ?? "");
+  return !text.includes("title");
+};
+
+type RequestCounts = {
+  readonly messages: () => number;
+  readonly main: () => number;
+};
+
+// Counts POST /v1/messages requests, separating the main response from the
+// concurrent title request, and caps the count with a non-retryable 400 so an
+// aggressively-retrying goose can't loop forever.
+const trackMessagesRequests = (app: FastifyInstance): RequestCounts => {
+  let messages = 0;
+  let main = 0;
+  app.addHook("preHandler", async (request, reply) => {
+    if (request.method !== "POST" || request.url !== "/v1/messages") return;
+    messages++;
+    const body = (request.body ?? {}) as { system?: unknown };
+    if (isMainRequest(body.system)) main++;
+    if (messages > MAX_STREAMING_REQUESTS)
+      return reply.code(400).send({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          message: "anthropic-mock loop breaker",
+        },
+      });
+  });
+  return { messages: () => messages, main: () => main };
+};
+
+const startMock = async (app: FastifyInstance): Promise<string> => {
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const { port } = app.server.address() as AddressInfo;
+  return `http://127.0.0.1:${port}`;
+};
+
+// Combined, lower-cased goose stdout+stderr for substring/regex assertions.
+const gooseOutput = (result: GooseResult): string =>
+  `${asText(result.stdout)}\n${asText(result.stderr)}`.toLowerCase();
+
+const teardown = async (
+  app: FastifyInstance | undefined,
+  scratch: Scratch,
+): Promise<void> => {
+  await app?.close();
+  rmSync(scratch.root, { recursive: true, force: true });
+};
+
 export type { Scratch };
-export { asText, createScratch, gooseInstalled, runGoose, writeGooseProfile };
+export {
+  asText,
+  createScratch,
+  GOOSE_TIMEOUT_MS,
+  gooseInstalled,
+  gooseOutput,
+  MAX_STREAMING_REQUESTS,
+  runGoose,
+  startMock,
+  TEST_TIMEOUT_MS,
+  teardown,
+  trackMessagesRequests,
+  writeGooseProfile,
+};
