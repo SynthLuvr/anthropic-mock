@@ -45,30 +45,11 @@ fixtures).
 
 ## Design Decisions
 
-The HTTP layer is **Fastify**, chosen over in-process interceptor
-libraries (nock, MSW, sinon), a purpose-built mock library (Mockttp),
-and raw `node:http`. Fastify is the only option that gives **true
-incremental streaming that is also repeatable** (via `reply.hijack()` +
-`reply.raw`), at a fraction of the dependency weight, while still
-supporting in-process tests via `inject()`. See [ADR
-0001](./docs/decisions/0001-use-fastify-for-http-mock.md) for the full
-rationale, the evidence, and the alternatives considered.
-
-## Tech Stack
-
-| Tool                                                             | Purpose                            |
-|------------------------------------------------------------------|------------------------------------|
-| [pnpm](https://pnpm.io)                                          | Package manager                    |
-| [Fastify](https://fastify.dev)                                   | HTTP server for the mock           |
-| [TypeScript](https://www.typescriptlang.org)                     | Type checking (`tsc --noEmit`)     |
-| [Biome](https://biomejs.dev)                                     | Primary formatter and linter       |
-| [oxlint](https://oxc.rs/docs/usage/linter)                       | Secondary type-aware linter        |
-| [ast-grep](https://ast-grep.github.io)                           | Structural lint/format rules       |
-| [convert-to-arrow](https://github.com/chimurai/convert-to-arrow) | Codemod: `function` → arrow consts |
-| [Vitest](https://vitest.dev)                                     | Test runner (integration)          |
-| [tsx](https://github.com/privatenumber/tsx)                      | Dev-time TypeScript execution      |
-| [npm-run-all2](https://github.com/bcomnes/npm-run-all2)          | Orchestrates multi-step scripts    |
-| [pandoc](https://pandoc.org)                                     | Markdown formatter (GFM)           |
+Architecture Decision Records (ADRs) live in
+[`docs/decisions/`](./docs/decisions/). Each ADR documents a key design
+choice — the rationale, evidence, and alternatives considered — so the
+README does not need updating as new decisions are made. Browse the
+directory for the full set.
 
 ## Prerequisites
 
@@ -245,15 +226,16 @@ Returns a list of models. Only `id` is consumed by goose:
 
 The `lint` script runs all linters in sequence via `npm-run-all`:
 
-| Script                | Description                               |
-|-----------------------|-------------------------------------------|
-| `pnpm lint`           | Run all lint steps                        |
-| `pnpm lint:biome`     | Biome check: format + lint + import order |
-| `pnpm lint:oxlint`    | oxlint with type-aware rules              |
-| `pnpm lint:exports`   | ast-grep: no inline exports               |
-| `pnpm lint:functions` | ast-grep: no function declarations        |
-| `pnpm lint:md`        | pandoc: Markdown must be GFM-formatted    |
-| `pnpm lint:peer-deps` | pnpm: no peer dependency conflicts        |
+| Script                   | Description                               |
+|--------------------------|-------------------------------------------|
+| `pnpm lint`              | Run all lint steps                        |
+| `pnpm lint:biome`        | Biome check: format + lint + import order |
+| `pnpm lint:oxlint`       | oxlint with type-aware rules              |
+| `pnpm lint:exports`      | ast-grep: no inline exports               |
+| `pnpm lint:functions`    | ast-grep: no function declarations        |
+| `pnpm lint:file-comment` | ast-grep: no leading file comments        |
+| `pnpm lint:md`           | pandoc: Markdown must be GFM-formatted    |
+| `pnpm lint:peer-deps`    | pnpm: no peer dependency conflicts        |
 
 ### Format
 
@@ -294,23 +276,3 @@ These are **enforced** by the toolchain, not just preferences:
 - **ESM only** (`"type": "module"`)
 - **Markdown via pandoc** — all `.md` formatted with `pandoc -t gfm`
   (`lint:md`/`format:md`)
-
-## Project Structure
-
-    ├── .ast-grep/rules/       # Structural lint/format rules
-    ├── .github/workflows/     # CI
-    ├── bin/anthropic-mock     # Server launcher (node --import tsx)
-    ├── docs/decisions/        # Architecture Decision Records (ADRs)
-    ├── scripts/               # Tooling scripts
-    ├── src/
-    │   ├── create-mock.ts     # Fastify factory + start helper
-    │   ├── messages.ts        # POST /v1/messages (incremental SSE)
-    │   ├── models.ts          # GET /v1/models
-    │   ├── responses/         # Generated markdown canned responses
-    │   ├── server.ts          # Standalone entry point (bin/anthropic-mock)
-    │   ├── types.ts           # Shared types
-    │   └── tests/             # Integration tests
-    ├── biome.json             # Biome formatter + linter config
-    ├── .oxlintrc.json         # oxlint type-aware rules
-    ├── tsconfig.json          # TypeScript config
-    └── vitest.config.ts       # Test config
