@@ -14,29 +14,27 @@ import {
   writeGooseProfile,
 } from "./goose-helpers";
 
-// Streams deltas for this long, then tears the socket down mid-flight (no
-// closing frames) — a mid-stream 500-class error. A long window proves goose
-// endures a genuine stream before the failure, not an instant connection drop.
-const STREAM_ERROR_AFTER_MS = 15_000;
+// Long enough that the socket dies genuinely mid-stream (not an instant
+// connection drop), short enough to keep the test fast.
+const STREAM_ERROR_AFTER_MS = 1500;
 
-// goose fires concurrent /v1/messages requests. The first few stream-and-fail
-// at 15 s; once this is exceeded the mock answers with a fast non-streaming
-// 400 (a non-retryable client error) so retries stay bounded.
-const MAX_STREAMING_REQUESTS = 4;
+// Defensive backstop: a fast non-retryable 400 caps the runtime if a future
+// goose retried aggressively. The current goose never reaches it.
+const MAX_STREAMING_REQUESTS = 12;
 
-// Backstop: if goose keeps retrying the fast 400s, the process timeout kills
-// it so the test can never hang.
-const GOOSE_TIMEOUT_MS = 120_000;
+const GOOSE_TIMEOUT_MS = 90_000;
+const TEST_TIMEOUT_MS = 120_000;
 
-// Vitest timeout: a few 15 s retry waves plus goose start-up.
-const TEST_TIMEOUT_MS = 180_000;
-
-// Only the mock can emit this token; its absence proves the stream never
-// completed.
-const CANNED_REPLY = "mock-reply-midstream-fidelity";
+// goose fires the main response and a background title-generation request
+// concurrently; title requests carry "title" in their system prompt.
+const isMainRequest = (system: unknown): boolean => {
+  const text =
+    typeof system === "string" ? system : JSON.stringify(system ?? "");
+  return !text.includes("title");
+};
 
 describe.skipIf(!gooseInstalled)(
-  "goose CLI mid-stream error (integration)",
+  "goose CLI mid-stream error retry (integration, issue #10525)",
   () => {
     let scratch: Scratch;
     let app: FastifyInstance;
@@ -50,20 +48,26 @@ describe.skipIf(!gooseInstalled)(
       rmSync(scratch.root, { recursive: true, force: true });
     });
 
+    // Issue #10525: a transient mid-stream disconnect is flagged recoverable,
+    // yet goose halts and tells the user to "Please resend" rather than
+    // retrying. The assertions below capture that buggy behaviour and must be
+    // inverted once the retry is fixed.
     it(
-      "retries a 15 s mid-stream error, then surfaces the failure",
+      "halts and asks the user to resend instead of retrying a mid-stream error",
       async () => {
         writeGooseProfile(scratch.configHome, "claude-sonnet-4-5");
 
         let messageRequests = 0;
+        let mainRequests = 0;
         app = createAnthropicMock({
-          cannedResponse: CANNED_REPLY,
           streamErrorAfterMs: STREAM_ERROR_AFTER_MS,
         });
         app.addHook("preHandler", async (request, reply) => {
           if (request.method !== "POST" || request.url !== "/v1/messages")
             return;
           messageRequests++;
+          const body = (request.body ?? {}) as { system?: unknown };
+          if (isMainRequest(body.system)) mainRequests++;
           if (messageRequests > MAX_STREAMING_REQUESTS)
             return reply.code(400).send({
               type: "error",
@@ -84,19 +88,16 @@ describe.skipIf(!gooseInstalled)(
           "Reply with the test token.",
           GOOSE_TIMEOUT_MS,
         );
-        const output = `${asText(result.stdout)}\n${asText(result.stderr)}`;
+        const output = `${asText(result.stdout)}\n${asText(
+          result.stderr,
+        )}`.toLowerCase();
 
-        // goose made more than one request: it retried the failed stream.
-        expect(messageRequests).toBeGreaterThan(1);
-        // The loop breaker capped retries; concurrency allows some slack.
-        expect(messageRequests).toBeLessThanOrEqual(
-          MAX_STREAMING_REQUESTS + 50,
-        );
-        // goose exits 0 on a mid-stream error, so assert on the message text
-        // rather than the exit code.
-        expect(output.toLowerCase()).toMatch(
-          /error|fail|unable|retry|resend|abort/,
-        );
+        expect(output).toMatch(/please resend/);
+        expect(output).toMatch(/stream decode error/);
+        // The main response was attempted once and never retried; a fixed
+        // goose would retry, making this greater than one.
+        expect(mainRequests).toBe(1);
+        expect(messageRequests).toBeLessThanOrEqual(MAX_STREAMING_REQUESTS);
       },
       TEST_TIMEOUT_MS,
     );
