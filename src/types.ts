@@ -11,16 +11,13 @@ type AnthropicMockOptions = {
   // When set, streams deltas for this many milliseconds then tears the
   // socket down mid-flight (no closing frames) — a mid-stream 500-class error.
   readonly streamErrorAfterMs?: number;
-  // Channel B: when set, streams deltas for this many milliseconds, then
-  // emits a structured SSE `event: error` frame and ends the stream cleanly.
-  // Unlike streamErrorAfterMs (an abrupt transport drop), this delivers a
-  // parseable error event after the 200, mirroring the real API's only
-  // mid-stream error channel.
+  // When set, streams deltas for this many milliseconds, then emits a
+  // structured SSE `event: error` frame and ends the stream cleanly — a
+  // parseable mid-stream error after the 200 (Channel B; ADR 0004).
   readonly streamSseErrorAfterMs?: number;
-  // The error.type inside the SSE error event (default "overloaded_error",
-  // the only mid-stream example Anthropic documents).
+  // The error.type in the SSE error event (default "overloaded_error").
   readonly streamSseErrorType?: string;
-  // The error.message inside the SSE error event (default "Overloaded").
+  // The error.message in the SSE error event (default "Overloaded").
   readonly streamSseErrorMessage?: string;
 };
 

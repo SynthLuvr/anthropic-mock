@@ -110,10 +110,8 @@ const messageStopEvent = (): SseEvent => ({
   data: { type: "message_stop" },
 });
 
-// Channel B: the SSE error event Anthropic can emit mid-stream after a 200.
-// This is the only mid-stream error channel — see ADR 0004. The documented
-// example is overloaded_error (the streaming analog of HTTP 529), but the
-// error.type is handled generically.
+// Channel B: the structured SSE error frame the real API emits mid-stream
+// after a 200 — its only mid-stream error channel (ADR 0004).
 const sseErrorEvent = (errorType: string, errorMessage: string): SseEvent => ({
   event: "error",
   data: {
@@ -169,15 +167,21 @@ const streamEvents = async (
   raw.end(DONE_FRAME);
 };
 
-// Cycles the chunks as content_block_delta frames until the deadline,
-// honouring backpressure. Shared by both mid-stream failure paths so a long
-// window with a tiny inter-frame delay can't exhaust memory.
-const streamDeltasUntil = async (
+// Opens the stream and cycles the canned text as deltas for `durationMs` —
+// the shared body of both mid-stream failure paths, which differ only in how
+// they terminate.
+const streamOpeningThenDeltas = async (
   raw: ServerResponse,
+  model: string,
   chunks: readonly string[],
+  inputTokens: number,
   delayMs: number,
-  deadline: number,
+  durationMs: number,
 ): Promise<void> => {
+  beginStream(raw);
+  await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
+  await writeFrame(raw, contentBlockStartEvent(), delayMs);
+  const deadline = Date.now() + durationMs;
   while (Date.now() < deadline)
     for (const chunk of chunks) {
       await writeFrame(raw, textDelta(chunk), delayMs);
@@ -185,8 +189,8 @@ const streamDeltasUntil = async (
     }
 };
 
-// Channel A (transport): streams the opening frames and deltas for
-// errorAfterMs, then tears the socket down mid-flight with no closing frames.
+// Channel A (transport): streams opening frames and deltas, then tears the
+// socket down mid-flight with no closing frames — a truncated mid-stream error.
 const streamEventsUntilError = async (
   raw: ServerResponse,
   model: string,
@@ -195,16 +199,19 @@ const streamEventsUntilError = async (
   delayMs: number,
   errorAfterMs: number,
 ): Promise<void> => {
-  beginStream(raw);
-  await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
-  await writeFrame(raw, contentBlockStartEvent(), delayMs);
-  await streamDeltasUntil(raw, chunks, delayMs, Date.now() + errorAfterMs);
+  await streamOpeningThenDeltas(
+    raw,
+    model,
+    chunks,
+    inputTokens,
+    delayMs,
+    errorAfterMs,
+  );
   raw.destroy();
 };
 
-// Channel B (SSE): streams the opening frames and deltas for errorAfterMs,
-// then emits a structured `event: error` frame and ends the stream cleanly —
-// no closing frames, no [DONE]. The error is terminal and parseable.
+// Channel B (SSE): streams opening frames and deltas, then emits a structured
+// `event: error` frame and ends cleanly — a parseable mid-stream error.
 const streamEventsUntilSseError = async (
   raw: ServerResponse,
   model: string,
@@ -215,10 +222,14 @@ const streamEventsUntilSseError = async (
   errorType: string,
   errorMessage: string,
 ): Promise<void> => {
-  beginStream(raw);
-  await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
-  await writeFrame(raw, contentBlockStartEvent(), delayMs);
-  await streamDeltasUntil(raw, chunks, delayMs, Date.now() + errorAfterMs);
+  await streamOpeningThenDeltas(
+    raw,
+    model,
+    chunks,
+    inputTokens,
+    delayMs,
+    errorAfterMs,
+  );
   await writeFrame(raw, sseErrorEvent(errorType, errorMessage), delayMs);
   raw.end();
 };
