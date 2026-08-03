@@ -229,3 +229,88 @@ describe("POST /v1/messages mid-stream error (integration)", () => {
     expect(body).not.toContain("[DONE]");
   });
 });
+
+describe("POST /v1/messages mid-stream SSE error event (integration)", () => {
+  it("emits a parseable event: error after streaming opening frames and deltas", async () => {
+    const content = "the quick brown fox jumps over";
+    const server = await startTestServer({
+      cannedResponse: content,
+      streamChunkSize: 8,
+      streamChunkDelayMs: 2,
+      streamSseErrorAfterMs: 60,
+    });
+
+    const response = await postMessages(server.url);
+    const { body } = await drain(response);
+    await server.close();
+
+    expect(response.status).toBe(200);
+    const events = parseEvents(body);
+    // Opening frames and deltas were delivered before the error.
+    expect(events.some((event) => event.event === "message_start")).toBe(true);
+    expect(events.some((event) => event.event === "content_block_start")).toBe(
+      true,
+    );
+    expect(deltaCount(events)).toBeGreaterThan(1);
+    // Real content flowed before the error.
+    expect(deltaText(events).startsWith(content)).toBe(true);
+    // Exactly one error event, and it is the last frame on the wire.
+    const errorEvents = events.filter((event) => event.event === "error");
+    expect(errorEvents).toHaveLength(1);
+    expect(events[events.length - 1]!.event).toBe("error");
+    // The error frame is structured and parseable, matching Anthropic's
+    // documented mid-stream shape exactly.
+    expect(JSON.parse(errorEvents[0]!.data)).toEqual({
+      type: "error",
+      error: { type: "overloaded_error", message: "Overloaded" },
+    });
+    // The error terminates the stream: no normal closing frames or [DONE].
+    expect(body).not.toContain("content_block_stop");
+    expect(body).not.toContain("message_delta");
+    expect(body).not.toContain("message_stop");
+    expect(body).not.toContain("[DONE]");
+  });
+
+  it("honours a custom error type and message", async () => {
+    const server = await startTestServer({
+      cannedResponse: "x".repeat(64),
+      streamChunkSize: 8,
+      streamChunkDelayMs: 1,
+      streamSseErrorAfterMs: 30,
+      streamSseErrorType: "rate_limit_error",
+      streamSseErrorMessage: "Too many tokens",
+    });
+
+    const response = await postMessages(server.url);
+    const { body } = await drain(response);
+    await server.close();
+
+    const errorEvents = parseEvents(body).filter(
+      (event) => event.event === "error",
+    );
+    expect(errorEvents).toHaveLength(1);
+    expect(JSON.parse(errorEvents[0]!.data)).toEqual({
+      type: "error",
+      error: { type: "rate_limit_error", message: "Too many tokens" },
+    });
+  });
+
+  it("streams for at least the configured duration before the error", async () => {
+    const server = await startTestServer({
+      cannedResponse: "x".repeat(256),
+      streamChunkSize: 4,
+      streamChunkDelayMs: 2,
+      streamSseErrorAfterMs: 150,
+    });
+
+    const start = Date.now();
+    const response = await postMessages(server.url);
+    await drain(response);
+    const elapsed = Date.now() - start;
+    await server.close();
+
+    expect(response.status).toBe(200);
+    // Deltas genuinely streamed over time before the error arrived.
+    expect(elapsed).toBeGreaterThanOrEqual(120);
+  });
+});

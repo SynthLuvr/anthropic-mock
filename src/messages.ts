@@ -110,6 +110,18 @@ const messageStopEvent = (): SseEvent => ({
   data: { type: "message_stop" },
 });
 
+// Channel B: the SSE error event Anthropic can emit mid-stream after a 200.
+// This is the only mid-stream error channel — see ADR 0004. The documented
+// example is overloaded_error (the streaming analog of HTTP 529), but the
+// error.type is handled generically.
+const sseErrorEvent = (errorType: string, errorMessage: string): SseEvent => ({
+  event: "error",
+  data: {
+    type: "error",
+    error: { type: errorType, message: errorMessage },
+  },
+});
+
 const buildMessageEvents = (
   model: string,
   chunks: readonly string[],
@@ -157,8 +169,24 @@ const streamEvents = async (
   raw.end(DONE_FRAME);
 };
 
-// Streams deltas until errorAfterMs elapses, then tears the socket down
-// mid-flight with no closing frames. Chunks cycle to fill the full window.
+// Cycles the chunks as content_block_delta frames until the deadline,
+// honouring backpressure. Shared by both mid-stream failure paths so a long
+// window with a tiny inter-frame delay can't exhaust memory.
+const streamDeltasUntil = async (
+  raw: ServerResponse,
+  chunks: readonly string[],
+  delayMs: number,
+  deadline: number,
+): Promise<void> => {
+  while (Date.now() < deadline)
+    for (const chunk of chunks) {
+      await writeFrame(raw, textDelta(chunk), delayMs);
+      if (Date.now() >= deadline) break;
+    }
+};
+
+// Channel A (transport): streams the opening frames and deltas for
+// errorAfterMs, then tears the socket down mid-flight with no closing frames.
 const streamEventsUntilError = async (
   raw: ServerResponse,
   model: string,
@@ -170,13 +198,29 @@ const streamEventsUntilError = async (
   beginStream(raw);
   await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
   await writeFrame(raw, contentBlockStartEvent(), delayMs);
-  const deadline = Date.now() + errorAfterMs;
-  while (Date.now() < deadline)
-    for (const chunk of chunks) {
-      await writeFrame(raw, textDelta(chunk), delayMs);
-      if (Date.now() >= deadline) break;
-    }
+  await streamDeltasUntil(raw, chunks, delayMs, Date.now() + errorAfterMs);
   raw.destroy();
+};
+
+// Channel B (SSE): streams the opening frames and deltas for errorAfterMs,
+// then emits a structured `event: error` frame and ends the stream cleanly —
+// no closing frames, no [DONE]. The error is terminal and parseable.
+const streamEventsUntilSseError = async (
+  raw: ServerResponse,
+  model: string,
+  chunks: readonly string[],
+  inputTokens: number,
+  delayMs: number,
+  errorAfterMs: number,
+  errorType: string,
+  errorMessage: string,
+): Promise<void> => {
+  beginStream(raw);
+  await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
+  await writeFrame(raw, contentBlockStartEvent(), delayMs);
+  await streamDeltasUntil(raw, chunks, delayMs, Date.now() + errorAfterMs);
+  await writeFrame(raw, sseErrorEvent(errorType, errorMessage), delayMs);
+  raw.end();
 };
 
 const registerMessagesRoute = (
@@ -189,6 +233,9 @@ const registerMessagesRoute = (
   const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
   const errorAfterMs = options.streamErrorAfterMs;
+  const sseErrorAfterMs = options.streamSseErrorAfterMs;
+  const sseErrorType = options.streamSseErrorType ?? "overloaded_error";
+  const sseErrorMessage = options.streamSseErrorMessage ?? "Overloaded";
 
   app.post("/v1/messages", async (request, reply) => {
     const body = parseRequest(request.body);
@@ -196,7 +243,18 @@ const registerMessagesRoute = (
     const chunks = splitText(text, chunkSize);
     reply.hijack();
     try {
-      if (errorAfterMs !== undefined && errorAfterMs > 0)
+      if (sseErrorAfterMs !== undefined && sseErrorAfterMs > 0)
+        await streamEventsUntilSseError(
+          reply.raw,
+          model,
+          chunks,
+          inputTokens,
+          chunkDelayMs,
+          sseErrorAfterMs,
+          sseErrorType,
+          sseErrorMessage,
+        );
+      else if (errorAfterMs !== undefined && errorAfterMs > 0)
         await streamEventsUntilError(
           reply.raw,
           model,
