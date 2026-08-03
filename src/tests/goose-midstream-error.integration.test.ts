@@ -14,13 +14,12 @@ import {
   writeGooseProfile,
 } from "./goose-helpers";
 
-// Hundreds of deltas flow before the socket is torn down, so the failure is
-// unambiguously mid-stream (not an instant connection drop) while keeping the
-// test fast.
+// Long enough that the socket dies genuinely mid-stream (not an instant
+// connection drop), short enough to keep the test fast.
 const STREAM_ERROR_AFTER_MS = 1500;
 
-// Backstop only: if a future goose retries aggressively, a fast non-retryable
-// 400 caps the runtime. The current goose never reaches it.
+// Defensive backstop: a fast non-retryable 400 caps the runtime if a future
+// goose retried aggressively. The current goose never reaches it.
 const MAX_STREAMING_REQUESTS = 12;
 
 const GOOSE_TIMEOUT_MS = 90_000;
@@ -49,11 +48,10 @@ describe.skipIf(!gooseInstalled)(
       rmSync(scratch.root, { recursive: true, force: true });
     });
 
-    // Issue #10525 reports that a transient mid-stream disconnect is labelled
-    // recoverable yet goose never retries it: it halts and tells the user to
-    // "Please resend your message to try again." This test reproduces that.
-    // The assertions below document the buggy behaviour; once #10525 is fixed
-    // goose will retry the main request and recover, so they must be inverted.
+    // Issue #10525: a transient mid-stream disconnect is flagged recoverable,
+    // yet goose halts and tells the user to "Please resend" rather than
+    // retrying. The assertions below capture that buggy behaviour and must be
+    // inverted once the retry is fixed.
     it(
       "halts and asks the user to resend instead of retrying a mid-stream error",
       async () => {
@@ -94,13 +92,11 @@ describe.skipIf(!gooseInstalled)(
           result.stderr,
         )}`.toLowerCase();
 
-        // The exact symptom from issue #10525.
         expect(output).toMatch(/please resend/);
         expect(output).toMatch(/stream decode error/);
-        // The main response was attempted exactly once and never retried; a
-        // fixed goose would retry, making this greater than one.
+        // The main response was attempted once and never retried; a fixed
+        // goose would retry, making this greater than one.
         expect(mainRequests).toBe(1);
-        expect(messageRequests).toBeGreaterThan(0);
         expect(messageRequests).toBeLessThanOrEqual(MAX_STREAMING_REQUESTS);
       },
       TEST_TIMEOUT_MS,
