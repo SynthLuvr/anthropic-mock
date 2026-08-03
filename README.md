@@ -54,21 +54,29 @@ supporting in-process tests via `inject()`. See [ADR
 0001](./docs/decisions/0001-use-fastify-for-http-mock.md) for the full
 rationale, the evidence, and the alternatives considered.
 
+Two further decisions are documented:
+
+- [ADR 0002](./docs/decisions/0002-incremental-streaming.md) — stream
+  responses incrementally over the raw socket
+- [ADR 0003](./docs/decisions/0003-midstream-error.md) — simulate a
+  mid-stream error after a configurable duration
+
 ## Tech Stack
 
-| Tool                                                             | Purpose                            |
-|------------------------------------------------------------------|------------------------------------|
-| [pnpm](https://pnpm.io)                                          | Package manager                    |
-| [Fastify](https://fastify.dev)                                   | HTTP server for the mock           |
-| [TypeScript](https://www.typescriptlang.org)                     | Type checking (`tsc --noEmit`)     |
-| [Biome](https://biomejs.dev)                                     | Primary formatter and linter       |
-| [oxlint](https://oxc.rs/docs/usage/linter)                       | Secondary type-aware linter        |
-| [ast-grep](https://ast-grep.github.io)                           | Structural lint/format rules       |
-| [convert-to-arrow](https://github.com/chimurai/convert-to-arrow) | Codemod: `function` → arrow consts |
-| [Vitest](https://vitest.dev)                                     | Test runner (integration)          |
-| [tsx](https://github.com/privatenumber/tsx)                      | Dev-time TypeScript execution      |
-| [npm-run-all2](https://github.com/bcomnes/npm-run-all2)          | Orchestrates multi-step scripts    |
-| [pandoc](https://pandoc.org)                                     | Markdown formatter (GFM)           |
+| Tool                                                             | Purpose                             |
+|------------------------------------------------------------------|-------------------------------------|
+| [pnpm](https://pnpm.io)                                          | Package manager                     |
+| [Fastify](https://fastify.dev)                                   | HTTP server for the mock            |
+| [arktype](https://arktype.dev)                                   | Runtime request/response validation |
+| [TypeScript](https://www.typescriptlang.org)                     | Type checking (`tsc --noEmit`)      |
+| [Biome](https://biomejs.dev)                                     | Primary formatter and linter        |
+| [oxlint](https://oxc.rs/docs/usage/linter)                       | Secondary type-aware linter         |
+| [ast-grep](https://ast-grep.github.io)                           | Structural lint/format rules        |
+| [convert-to-arrow](https://github.com/chimurai/convert-to-arrow) | Codemod: `function` → arrow consts  |
+| [Vitest](https://vitest.dev)                                     | Test runner (integration)           |
+| [tsx](https://github.com/privatenumber/tsx)                      | Dev-time TypeScript execution       |
+| [npm-run-all2](https://github.com/bcomnes/npm-run-all2)          | Orchestrates multi-step scripts     |
+| [pandoc](https://pandoc.org)                                     | Markdown formatter (GFM)            |
 
 ## Prerequisites
 
@@ -245,15 +253,16 @@ Returns a list of models. Only `id` is consumed by goose:
 
 The `lint` script runs all linters in sequence via `npm-run-all`:
 
-| Script                | Description                               |
-|-----------------------|-------------------------------------------|
-| `pnpm lint`           | Run all lint steps                        |
-| `pnpm lint:biome`     | Biome check: format + lint + import order |
-| `pnpm lint:oxlint`    | oxlint with type-aware rules              |
-| `pnpm lint:exports`   | ast-grep: no inline exports               |
-| `pnpm lint:functions` | ast-grep: no function declarations        |
-| `pnpm lint:md`        | pandoc: Markdown must be GFM-formatted    |
-| `pnpm lint:peer-deps` | pnpm: no peer dependency conflicts        |
+| Script                   | Description                               |
+|--------------------------|-------------------------------------------|
+| `pnpm lint`              | Run all lint steps                        |
+| `pnpm lint:biome`        | Biome check: format + lint + import order |
+| `pnpm lint:oxlint`       | oxlint with type-aware rules              |
+| `pnpm lint:exports`      | ast-grep: no inline exports               |
+| `pnpm lint:functions`    | ast-grep: no function declarations        |
+| `pnpm lint:file-comment` | ast-grep: no leading file comments        |
+| `pnpm lint:md`           | pandoc: Markdown must be GFM-formatted    |
+| `pnpm lint:peer-deps`    | pnpm: no peer dependency conflicts        |
 
 ### Format
 
@@ -306,6 +315,7 @@ These are **enforced** by the toolchain, not just preferences:
     │   ├── create-mock.ts     # Fastify factory + start helper
     │   ├── messages.ts        # POST /v1/messages (incremental SSE)
     │   ├── models.ts          # GET /v1/models
+    │   ├── schemas.ts         # ArkType request parsing, port/model types
     │   ├── responses/         # Generated markdown canned responses
     │   ├── server.ts          # Standalone entry point (bin/anthropic-mock)
     │   ├── types.ts           # Shared types
