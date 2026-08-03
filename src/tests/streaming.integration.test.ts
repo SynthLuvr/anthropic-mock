@@ -66,10 +66,14 @@ const drain = async (
   const start = Date.now();
   const reads: Read[] = [];
   for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const text = decoder.decode(value, { stream: true });
-    if (text.length > 0) reads.push({ elapsed: Date.now() - start, text });
+    try {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      if (text.length > 0) reads.push({ elapsed: Date.now() - start, text });
+    } catch {
+      break;
+    }
   }
   return { reads, body: reads.map((read) => read.text).join("") };
 };
@@ -152,5 +156,76 @@ describe("POST /v1/messages incremental streaming (integration)", () => {
     await server.close();
 
     expect(deltaText(parseEvents(body))).toBe(readResponse("recipe.md"));
+  });
+});
+
+describe("POST /v1/messages mid-stream error (integration)", () => {
+  it("streams opening frames and deltas, then aborts without closing frames", async () => {
+    const content = "the quick brown fox jumps over";
+    const server = await startTestServer({
+      cannedResponse: content,
+      streamChunkSize: 8,
+      streamChunkDelayMs: 2,
+      streamErrorAfterMs: 60,
+    });
+
+    const response = await postMessages(server.url);
+    const { body } = await drain(response);
+    await server.close();
+
+    expect(response.status).toBe(200);
+    const events = parseEvents(body);
+    // The opening frames and several deltas were delivered before the abort.
+    expect(events.some((event) => event.event === "message_start")).toBe(true);
+    expect(events.some((event) => event.event === "content_block_start")).toBe(
+      true,
+    );
+    expect(deltaCount(events)).toBeGreaterThan(1);
+    // The canned text was streamed (the first pass through it reassembles
+    // exactly), proving real content flowed before the error.
+    expect(deltaText(events).startsWith(content)).toBe(true);
+    // The stream was cut off mid-flight: none of the closing frames or the
+    // [DONE] sentinel ever reached the client, so the response is unparsable.
+    expect(body).not.toContain("content_block_stop");
+    expect(body).not.toContain("message_delta");
+    expect(body).not.toContain("message_stop");
+    expect(body).not.toContain("[DONE]");
+  });
+
+  it("streams for at least the configured duration before aborting", async () => {
+    const server = await startTestServer({
+      cannedResponse: "x".repeat(256),
+      streamChunkSize: 4,
+      streamChunkDelayMs: 2,
+      streamErrorAfterMs: 150,
+    });
+
+    const start = Date.now();
+    const response = await postMessages(server.url);
+    await drain(response);
+    const elapsed = Date.now() - start;
+    await server.close();
+
+    expect(response.status).toBe(200);
+    // The deltas genuinely streamed over a period of time before the error,
+    // rather than being a single burst that failed instantly.
+    expect(elapsed).toBeGreaterThanOrEqual(120);
+  });
+
+  it("leaves no closing frames even when the canned text is long", async () => {
+    const server = await startTestServer({
+      cannedResponse: readResponse("essay.md"),
+      streamChunkSize: 16,
+      streamChunkDelayMs: 1,
+      streamErrorAfterMs: 40,
+    });
+
+    const response = await postMessages(server.url);
+    const { body } = await drain(response);
+    await server.close();
+
+    expect(deltaCount(parseEvents(body))).toBeGreaterThan(1);
+    expect(body).not.toContain("message_stop");
+    expect(body).not.toContain("[DONE]");
   });
 });
