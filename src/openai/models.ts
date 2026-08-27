@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import type { OpenAIMockOptions } from "../types";
+import type { MockOptions } from "../types";
 import type { OpenAIModel } from "./schemas";
 
 const DEFAULT_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4.1"] as const;
@@ -16,7 +16,7 @@ const toModel = (id: string): OpenAIModel => ({
 
 const registerOpenAIModelsRoute = (
   app: FastifyInstance,
-  options: OpenAIMockOptions,
+  options: MockOptions,
 ): void => {
   const models = options.models ?? DEFAULT_MODELS;
   app.get("/v1/models", async (_request, reply) =>

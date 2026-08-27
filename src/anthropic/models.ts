@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import type { AnthropicMockOptions } from "../types";
+import type { MockOptions } from "../types";
 import type { AnthropicModel } from "./schemas";
 
 const DEFAULT_MODELS = [
@@ -17,7 +17,7 @@ const toModel = (id: string): AnthropicModel => ({
 
 const registerAnthropicModelsRoute = (
   app: FastifyInstance,
-  options: AnthropicMockOptions,
+  options: MockOptions,
 ): void => {
   const models = options.models ?? DEFAULT_MODELS;
   app.get("/v1/models", async (_request, reply) =>

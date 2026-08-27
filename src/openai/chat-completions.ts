@@ -1,18 +1,15 @@
-import type { ServerResponse } from "node:http";
-
 import type { FastifyInstance } from "fastify";
 
 import {
   resolveCannedResponse,
+  resolveErrorMode,
   resolveModel,
   type SseEvent,
   sleep,
   splitText,
-  streamEvents,
-  streamOpeningThenDeltas,
-  writeFrame,
+  streamReply,
 } from "../sse";
-import type { OpenAIMockOptions } from "../types";
+import type { MockOptions } from "../types";
 import { parseOpenAIRequest } from "./schemas";
 
 const DEFAULT_MODEL = "gpt-4o";
@@ -112,127 +109,48 @@ const chatCompletionBody = (
   },
 });
 
-// Transport error: streams opening chunks and deltas, then tears the socket
-// down mid-flight with no closing chunk or [DONE] — a truncated response.
-const streamEventsUntilError = async (
-  raw: ServerResponse,
-  meta: ChunkMeta,
-  chunks: readonly string[],
-  delayMs: number,
-  errorAfterMs: number,
-): Promise<void> => {
-  await streamOpeningThenDeltas(
-    raw,
-    [roleChunk(meta)],
-    (text) => contentChunk(meta, text),
-    chunks,
-    delayMs,
-    errorAfterMs,
-  );
-  raw.destroy();
-};
-
-// SSE error: streams opening chunks and deltas, then emits a structured
-// `data: {"error": ...}` frame and ends cleanly — a parseable error.
-const streamEventsUntilSseError = async (
-  raw: ServerResponse,
-  meta: ChunkMeta,
-  chunks: readonly string[],
-  delayMs: number,
-  errorAfterMs: number,
-  errorType: string,
-  errorMessage: string,
-): Promise<void> => {
-  await streamOpeningThenDeltas(
-    raw,
-    [roleChunk(meta)],
-    (text) => contentChunk(meta, text),
-    chunks,
-    delayMs,
-    errorAfterMs,
-  );
-  await writeFrame(raw, sseErrorEvent(errorType, errorMessage), delayMs);
-  raw.end();
-};
-
-// Error modes apply to non-streaming requests too, mapped to the closest
-// non-streaming analogue: the request fails with the error object as an
-// HTTP 500 body after the configured delay. The SSE error takes precedence
-// when both modes are configured, mirroring the streaming branch.
-const errorDelayMs = (options: OpenAIMockOptions): number | undefined => {
-  const { streamSseErrorAfterMs, streamErrorAfterMs } = options;
-  if (streamSseErrorAfterMs !== undefined && streamSseErrorAfterMs > 0)
-    return streamSseErrorAfterMs;
-  if (streamErrorAfterMs !== undefined && streamErrorAfterMs > 0)
-    return streamErrorAfterMs;
-  return undefined;
-};
-
 const registerOpenAIChatCompletionsRoute = (
   app: FastifyInstance,
-  options: OpenAIMockOptions,
+  options: MockOptions,
 ): void => {
   const text = resolveCannedResponse(options);
+  const chunks = splitText(text, options.streamChunkSize ?? DEFAULT_CHUNK_SIZE);
   const inputTokens = options.inputTokens ?? DEFAULT_INPUT_TOKENS;
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
-  const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
-  const errorAfterMs = options.streamErrorAfterMs;
-  const sseErrorAfterMs = options.streamSseErrorAfterMs;
-  const sseErrorType = options.streamSseErrorType ?? DEFAULT_SSE_ERROR_TYPE;
-  const sseErrorMessage =
-    options.streamSseErrorMessage ?? DEFAULT_SSE_ERROR_MESSAGE;
+  const errorEvent = sseErrorEvent(
+    options.streamSseErrorType ?? DEFAULT_SSE_ERROR_TYPE,
+    options.streamSseErrorMessage ?? DEFAULT_SSE_ERROR_MESSAGE,
+  );
+  const errorMode = resolveErrorMode(options);
 
   app.post("/v1/chat/completions", async (request, reply) => {
     const body = parseOpenAIRequest(request.body);
-    const model = resolveModel(body, DEFAULT_MODEL);
     const meta: ChunkMeta = {
       id: DEFAULT_COMPLETION_ID,
       created: DEFAULT_CREATED,
-      model,
+      model: resolveModel(body, DEFAULT_MODEL),
       fingerprint: DEFAULT_FINGERPRINT,
     };
-    const chunks = splitText(text, chunkSize);
 
     if (body.stream) {
-      reply.hijack();
-      try {
-        if (sseErrorAfterMs !== undefined && sseErrorAfterMs > 0)
-          await streamEventsUntilSseError(
-            reply.raw,
-            meta,
-            chunks,
-            chunkDelayMs,
-            sseErrorAfterMs,
-            sseErrorType,
-            sseErrorMessage,
-          );
-        else if (errorAfterMs !== undefined && errorAfterMs > 0)
-          await streamEventsUntilError(
-            reply.raw,
-            meta,
-            chunks,
-            chunkDelayMs,
-            errorAfterMs,
-          );
-        else
-          await streamEvents(
-            reply.raw,
-            buildStreamEvents(meta, chunks),
-            chunkDelayMs,
-          );
-      } catch {
-        // Hijacked replies have no error path; just tear the socket down.
-        reply.raw.destroy();
-      }
+      await streamReply(reply, {
+        events: buildStreamEvents(meta, chunks),
+        opening: [roleChunk(meta)],
+        deltaEvent: (chunk) => contentChunk(meta, chunk),
+        errorEvent,
+        chunks,
+        delayMs: chunkDelayMs,
+        errorMode,
+      });
       return;
     }
 
-    // Non-streaming (the OpenAI default): one JSON chat.completion.
-    const failureAfterMs = errorDelayMs(options);
-    if (failureAfterMs !== undefined) {
-      await sleep(failureAfterMs);
-      return reply.code(500).send(openAIError(sseErrorType, sseErrorMessage));
+    // Non-streaming (the OpenAI default): one JSON chat.completion, or the
+    // configured error as an HTTP 500 body after the same delay.
+    if (errorMode !== undefined) {
+      await sleep(errorMode.afterMs);
+      return reply.code(500).send(errorEvent.data);
     }
     return reply.send(
       chatCompletionBody(meta, text, inputTokens, outputTokens),

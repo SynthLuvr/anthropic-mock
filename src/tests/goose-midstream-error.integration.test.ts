@@ -40,7 +40,7 @@ describe.skipIf(!gooseInstalled)(
     it(
       "halts and asks the user to resend instead of retrying a mid-stream error",
       async () => {
-        writeGooseProfile(scratch.configHome, "claude-sonnet-4-5");
+        writeGooseProfile(scratch.configHome, "anthropic", "claude-sonnet-4-5");
 
         app = createAnthropicMock({
           streamErrorAfterMs: STREAM_ERROR_AFTER_MS,
@@ -51,6 +51,7 @@ describe.skipIf(!gooseInstalled)(
 
         const result = await runGoose(
           scratch,
+          "anthropic",
           url,
           "Reply with the test token.",
           GOOSE_TIMEOUT_MS,

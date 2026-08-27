@@ -56,10 +56,9 @@ streaming style, but differ in the details:
     build their own frame sequences on top. The `SseEvent` type carries
     an optional event name: present for Anthropic, absent for OpenAI.
 
-3.  **One shared options type.** `MockOptions` (aliased as
-    `AnthropicMockOptions` and `OpenAIMockOptions`) configures both
-    mocks. Every option has the same meaning per provider; only defaults
-    differ (e.g. default model, default SSE error type).
+3.  **One shared options type.** `MockOptions` configures both mocks.
+    Every option has the same meaning per provider; only defaults differ
+    (e.g. default model, default SSE error type).
     `inputTokens`/`outputTokens` map to `usage.input_tokens` /
     `usage.prompt_tokens` respectively.
 

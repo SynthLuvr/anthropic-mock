@@ -1,17 +1,14 @@
-import type { ServerResponse } from "node:http";
-
 import type { FastifyInstance } from "fastify";
 
 import {
   resolveCannedResponse,
+  resolveErrorMode,
   resolveModel,
   type SseEvent,
   splitText,
-  streamEvents,
-  streamOpeningThenDeltas,
-  writeFrame,
+  streamReply,
 } from "../sse";
-import type { AnthropicMockOptions } from "../types";
+import type { MockOptions } from "../types";
 import { parseAnthropicRequest } from "./schemas";
 
 const DEFAULT_MODEL = "claude-sonnet-4-5";
@@ -20,9 +17,11 @@ const DEFAULT_INPUT_TOKENS = 10;
 const DEFAULT_OUTPUT_TOKENS = 1;
 // Token-fragment-sized chunks mirror how the real API streams.
 const DEFAULT_CHUNK_SIZE = 16;
-// Combined with setNoDelay below, this delay makes deltas arrive over time
-// rather than in a single burst.
+// Combined with setNoDelay in beginStream, this delay makes deltas arrive
+// over time rather than in a single burst.
 const DEFAULT_CHUNK_DELAY_MS = 5;
+const DEFAULT_SSE_ERROR_TYPE = "overloaded_error";
+const DEFAULT_SSE_ERROR_MESSAGE = "Overloaded";
 
 const textDelta = (text: string): SseEvent => ({
   event: "content_block_delta",
@@ -103,101 +102,43 @@ const buildMessageEvents = (
   messageStopEvent(),
 ];
 
-// Channel A (transport): streams opening frames and deltas, then tears the
-// socket down mid-flight with no closing frames — a truncated mid-stream error.
-const streamEventsUntilError = async (
-  raw: ServerResponse,
+const openingEvents = (
   model: string,
-  chunks: readonly string[],
   inputTokens: number,
-  delayMs: number,
-  errorAfterMs: number,
-): Promise<void> => {
-  await streamOpeningThenDeltas(
-    raw,
-    [messageStartEvent(model, inputTokens), contentBlockStartEvent()],
-    textDelta,
-    chunks,
-    delayMs,
-    errorAfterMs,
-  );
-  raw.destroy();
-};
-
-// Channel B (SSE): streams opening frames and deltas, then emits a structured
-// `event: error` frame and ends cleanly — a parseable mid-stream error.
-const streamEventsUntilSseError = async (
-  raw: ServerResponse,
-  model: string,
-  chunks: readonly string[],
-  inputTokens: number,
-  delayMs: number,
-  errorAfterMs: number,
-  errorType: string,
-  errorMessage: string,
-): Promise<void> => {
-  await streamOpeningThenDeltas(
-    raw,
-    [messageStartEvent(model, inputTokens), contentBlockStartEvent()],
-    textDelta,
-    chunks,
-    delayMs,
-    errorAfterMs,
-  );
-  await writeFrame(raw, sseErrorEvent(errorType, errorMessage), delayMs);
-  raw.end();
-};
+): readonly SseEvent[] => [
+  messageStartEvent(model, inputTokens),
+  contentBlockStartEvent(),
+];
 
 const registerAnthropicMessagesRoute = (
   app: FastifyInstance,
-  options: AnthropicMockOptions,
+  options: MockOptions,
 ): void => {
-  const text = resolveCannedResponse(options);
+  const chunks = splitText(
+    resolveCannedResponse(options),
+    options.streamChunkSize ?? DEFAULT_CHUNK_SIZE,
+  );
   const inputTokens = options.inputTokens ?? DEFAULT_INPUT_TOKENS;
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
-  const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
-  const errorAfterMs = options.streamErrorAfterMs;
-  const sseErrorAfterMs = options.streamSseErrorAfterMs;
-  const sseErrorType = options.streamSseErrorType ?? "overloaded_error";
-  const sseErrorMessage = options.streamSseErrorMessage ?? "Overloaded";
 
   app.post("/v1/messages", async (request, reply) => {
-    const body = parseAnthropicRequest(request.body);
-    const model = resolveModel(body, DEFAULT_MODEL);
-    const chunks = splitText(text, chunkSize);
-    reply.hijack();
-    try {
-      if (sseErrorAfterMs !== undefined && sseErrorAfterMs > 0)
-        await streamEventsUntilSseError(
-          reply.raw,
-          model,
-          chunks,
-          inputTokens,
-          chunkDelayMs,
-          sseErrorAfterMs,
-          sseErrorType,
-          sseErrorMessage,
-        );
-      else if (errorAfterMs !== undefined && errorAfterMs > 0)
-        await streamEventsUntilError(
-          reply.raw,
-          model,
-          chunks,
-          inputTokens,
-          chunkDelayMs,
-          errorAfterMs,
-        );
-      else
-        await streamEvents(
-          reply.raw,
-          buildMessageEvents(model, chunks, inputTokens, outputTokens),
-          chunkDelayMs,
-        );
-    } catch {
-      // Hijacked replies have no error path; just tear the socket down.
-      reply.raw.destroy();
-    }
+    const model = resolveModel(
+      parseAnthropicRequest(request.body),
+      DEFAULT_MODEL,
+    );
+    await streamReply(reply, {
+      events: buildMessageEvents(model, chunks, inputTokens, outputTokens),
+      opening: openingEvents(model, inputTokens),
+      deltaEvent: textDelta,
+      errorEvent: sseErrorEvent(
+        options.streamSseErrorType ?? DEFAULT_SSE_ERROR_TYPE,
+        options.streamSseErrorMessage ?? DEFAULT_SSE_ERROR_MESSAGE,
+      ),
+      chunks,
+      delayMs: chunkDelayMs,
+      errorMode: resolveErrorMode(options),
+    });
   });
 };
 

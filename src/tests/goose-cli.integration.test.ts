@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { startAnthropicMock } from "../create-mock";
-import type { RunningAnthropicMock } from "../types";
+import type { RunningMock } from "../types";
 import {
   asText,
   createScratch,
@@ -27,7 +27,7 @@ const expectMockReply = (
 };
 
 describe.skipIf(!gooseInstalled)("goose CLI integration (real binary)", () => {
-  let server: RunningAnthropicMock;
+  let server: RunningMock;
   let scratch: Scratch;
 
   beforeEach(async () => {
@@ -41,9 +41,10 @@ describe.skipIf(!gooseInstalled)("goose CLI integration (real binary)", () => {
   });
 
   it("routes the active Anthropic profile to the mock and emits its canned reply", async () => {
-    writeGooseProfile(scratch.configHome, "claude-sonnet-4-5");
+    writeGooseProfile(scratch.configHome, "anthropic", "claude-sonnet-4-5");
     const result = await runGoose(
       scratch,
+      "anthropic",
       server.url,
       "Reply with the test token.",
     );
@@ -52,9 +53,10 @@ describe.skipIf(!gooseInstalled)("goose CLI integration (real binary)", () => {
   });
 
   it("honours the model declared in the profile", async () => {
-    writeGooseProfile(scratch.configHome, "claude-opus-4-5");
+    writeGooseProfile(scratch.configHome, "anthropic", "claude-opus-4-5");
     const result = await runGoose(
       scratch,
+      "anthropic",
       server.url,
       "Reply with the test token.",
     );

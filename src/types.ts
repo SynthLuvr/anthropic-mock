@@ -31,17 +31,4 @@ type RunningMock = {
   readonly close: () => Promise<void>;
 };
 
-// Provider-named aliases keep each provider's public API self-describing.
-type AnthropicMockOptions = MockOptions;
-type OpenAIMockOptions = MockOptions;
-type RunningAnthropicMock = RunningMock;
-type RunningOpenAIMock = RunningMock;
-
-export type {
-  AnthropicMockOptions,
-  MockOptions,
-  OpenAIMockOptions,
-  RunningAnthropicMock,
-  RunningMock,
-  RunningOpenAIMock,
-};
+export type { MockOptions, RunningMock };

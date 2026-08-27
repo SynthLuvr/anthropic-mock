@@ -3,14 +3,14 @@ import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { startOpenAIMock } from "../create-mock";
-import type { RunningOpenAIMock } from "../types";
+import type { RunningMock } from "../types";
 import {
   asText,
   createScratch,
   gooseInstalled,
-  runGooseOpenAI,
+  runGoose,
   type Scratch,
-  writeGooseOpenAIProfile,
+  writeGooseProfile,
 } from "./goose-helpers";
 
 // Only the mock can emit this token, so finding it in goose's output proves
@@ -20,7 +20,7 @@ const CANNED_REPLY = "openai-mock-reply-77e2-goose-integration";
 describe.skipIf(!gooseInstalled)(
   "goose CLI integration, OpenAI provider (real binary)",
   () => {
-    let server: RunningOpenAIMock;
+    let server: RunningMock;
     let scratch: Scratch;
 
     beforeEach(async () => {
@@ -34,9 +34,10 @@ describe.skipIf(!gooseInstalled)(
     });
 
     it("routes the active OpenAI profile to the mock and emits its canned reply", async () => {
-      writeGooseOpenAIProfile(scratch.configHome, "gpt-4o");
-      const result = await runGooseOpenAI(
+      writeGooseProfile(scratch.configHome, "openai", "gpt-4o");
+      const result = await runGoose(
         scratch,
+        "openai",
         server.url,
         "Reply with the test token.",
       );
@@ -49,9 +50,10 @@ describe.skipIf(!gooseInstalled)(
     });
 
     it("honours the model declared in the profile", async () => {
-      writeGooseOpenAIProfile(scratch.configHome, "gpt-4o-mini");
-      const result = await runGooseOpenAI(
+      writeGooseProfile(scratch.configHome, "openai", "gpt-4o-mini");
+      const result = await runGoose(
         scratch,
+        "openai",
         server.url,
         "Reply with the test token.",
       );

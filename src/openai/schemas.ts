@@ -45,21 +45,6 @@ const chatCompletion = type({
   }),
 });
 
-const chatCompletionChunkChoice = type({
-  index: "number",
-  delta: "unknown",
-  finish_reason: "string|null",
-});
-
-const chatCompletionChunk = type({
-  id: "string",
-  object: "'chat.completion.chunk'",
-  created: "number",
-  model: "string",
-  system_fingerprint: "string",
-  choices: chatCompletionChunkChoice.array(),
-});
-
 const parseOpenAIRequest = (raw: unknown): OpenAIRequest => {
   const result = openAIRequest(raw);
   // A mock is deliberately lenient: a malformed body falls back to defaults
@@ -68,9 +53,4 @@ const parseOpenAIRequest = (raw: unknown): OpenAIRequest => {
 };
 
 export type { OpenAIModel, OpenAIRequest };
-export {
-  chatCompletion,
-  chatCompletionChunk,
-  openAIModelsResponse,
-  parseOpenAIRequest,
-};
+export { chatCompletion, openAIModelsResponse, parseOpenAIRequest };

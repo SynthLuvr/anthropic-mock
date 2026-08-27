@@ -5,30 +5,21 @@ import { registerAnthropicModelsRoute } from "./anthropic/models";
 import { registerOpenAIChatCompletionsRoute } from "./openai/chat-completions";
 import { registerOpenAIModelsRoute } from "./openai/models";
 import { parsePort } from "./schemas";
-import type {
-  AnthropicMockOptions,
-  MockOptions,
-  OpenAIMockOptions,
-  RunningAnthropicMock,
-  RunningMock,
-  RunningOpenAIMock,
-} from "./types";
+import type { MockOptions, RunningMock } from "./types";
 
 const DEFAULT_HOST = "127.0.0.1";
 
 // Each provider owns its own app: both expose GET /v1/models, but the two
 // APIs disagree on that response's shape, so they cannot share one server
 // (ADR 0005).
-const createAnthropicMock = (
-  options: AnthropicMockOptions = {},
-): FastifyInstance => {
+const createAnthropicMock = (options: MockOptions = {}): FastifyInstance => {
   const app = Fastify({ logger: false });
   registerAnthropicMessagesRoute(app, options);
   registerAnthropicModelsRoute(app, options);
   return app;
 };
 
-const createOpenAIMock = (options: OpenAIMockOptions = {}): FastifyInstance => {
+const createOpenAIMock = (options: MockOptions = {}): FastifyInstance => {
   const app = Fastify({ logger: false });
   registerOpenAIChatCompletionsRoute(app, options);
   registerOpenAIModelsRoute(app, options);
@@ -50,13 +41,12 @@ const listen = async (
 };
 
 const startAnthropicMock = async (
-  options: AnthropicMockOptions = {},
-): Promise<RunningAnthropicMock> =>
-  listen(createAnthropicMock(options), options);
+  options: MockOptions = {},
+): Promise<RunningMock> => listen(createAnthropicMock(options), options);
 
 const startOpenAIMock = async (
-  options: OpenAIMockOptions = {},
-): Promise<RunningOpenAIMock> => listen(createOpenAIMock(options), options);
+  options: MockOptions = {},
+): Promise<RunningMock> => listen(createOpenAIMock(options), options);
 
 export {
   createAnthropicMock,

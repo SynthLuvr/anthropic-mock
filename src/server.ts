@@ -8,9 +8,7 @@ const DEFAULT_HOST = "127.0.0.1";
 type Provider = "anthropic" | "openai";
 
 // The provider is selected by CLI argument (`llm-mock openai`) or the
-// LLM_MOCK_PROVIDER environment variable, defaulting to anthropic. The two
-// mocks cannot share one server because they disagree on the /v1/models
-// response shape (ADR 0005).
+// LLM_MOCK_PROVIDER environment variable, defaulting to anthropic.
 const resolveProvider = (arg: string | undefined): Provider => {
   const raw = (
     arg ??

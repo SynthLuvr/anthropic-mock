@@ -175,7 +175,7 @@ Create a Fastify instance (not yet listening) with the Anthropic routes
 (`POST /v1/messages`, `GET /v1/models`) registered. Use `app.inject()`
 for testing or `app.listen()` to run it.
 
-### `startAnthropicMock(options?): Promise<RunningAnthropicMock>`
+### `startAnthropicMock(options?): Promise<RunningMock>`
 
 Create the Anthropic mock and start it listening. Resolves to
 `{ url, close }`, where `url` is the base URL
@@ -186,16 +186,15 @@ Create the Anthropic mock and start it listening. Resolves to
 Create a Fastify instance (not yet listening) with the OpenAI routes
 (`POST /v1/chat/completions`, `GET /v1/models`) registered.
 
-### `startOpenAIMock(options?): Promise<RunningOpenAIMock>`
+### `startOpenAIMock(options?): Promise<RunningMock>`
 
 Create the OpenAI mock and start it listening. Resolves to
 `{ url, close }`.
 
 ### Options
 
-One option set — `MockOptions` (aliased as `AnthropicMockOptions` and
-`OpenAIMockOptions`) — configures both provider mocks. Where defaults
-differ per provider, both are listed.
+One option set — `MockOptions` — configures both provider mocks. Where
+defaults differ per provider, both are listed.
 
 | Option                  | Type                | Default                                                                    | Description                                                                                                                                |
 |-------------------------|---------------------|----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
@@ -213,7 +212,7 @@ differ per provider, both are listed.
 | `streamSseErrorType`    | `string`            | Anthropic: `overloaded_error`; OpenAI: `server_error`                      | The error type inside the mid-stream SSE error frame                                                                                       |
 | `streamSseErrorMessage` | `string`            | Anthropic: `Overloaded`; OpenAI: `The server had an error…`                | The error message inside the mid-stream SSE error frame                                                                                    |
 
-### `RunningAnthropicMock` / `RunningOpenAIMock`
+### `RunningMock`
 
 | Field   | Type                  | Description                       |
 |---------|-----------------------|-----------------------------------|
