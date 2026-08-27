@@ -31,16 +31,14 @@ const sseText = (body: string): string =>
     .map((event) => event.delta?.text ?? "")
     .join("");
 
-// Resolves the mock's base url once the child server reports it
-// listening; fails fast (with the child's output) if it exits early.
+// Resolves the mock's url from the child's "listening on" line; fails
+// fast (with the child's output) if it exits before printing one.
 const waitForUrl = async (child: MockChild): Promise<string> => {
   let output = "";
-  child.stdout.on("data", (chunk: Buffer) => {
-    output += chunk.toString("utf8");
-  });
-  child.stderr.on("data", (chunk: Buffer) => {
-    output += chunk.toString("utf8");
-  });
+  for (const stream of [child.stdout, child.stderr])
+    stream.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+    });
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const match = output.match(/listening on (http:\/\/\S+)/);
@@ -113,7 +111,7 @@ describe("standalone server env options (integration)", () => {
     const logFile = join(root, "requests.log");
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", join("src", "server.ts"), "anthropic"],
+      ["--import", "tsx", "src/server.ts", "anthropic"],
       {
         cwd: REPO_ROOT,
         env: {

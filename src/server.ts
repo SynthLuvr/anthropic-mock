@@ -25,6 +25,16 @@ const resolveProvider = (arg: string | undefined): Provider => {
   process.exit(2);
 };
 
+// LLM_MOCK_LOG appends one "METHOD url" line per request, so a test suite
+// can assert which endpoints a client actually called.
+const requestLogger = (
+  logFile: string | undefined,
+): MockOptions["onRequest"] =>
+  logFile === undefined
+    ? undefined
+    : (request) =>
+        appendFileSync(logFile, `${request.method} ${request.url}\n`);
+
 const run = async (): Promise<void> => {
   const provider = resolveProvider(process.argv[2]);
   const defaultPort =
@@ -32,22 +42,11 @@ const run = async (): Promise<void> => {
   const envPort = Number(process.env.PORT);
   const port =
     process.env.PORT && !Number.isNaN(envPort) ? envPort : defaultPort;
-  const host = process.env.HOST ?? DEFAULT_HOST;
-  // LLM_MOCK_CANNED_RESPONSE overrides the default canned text.
-  const cannedResponse = process.env.LLM_MOCK_CANNED_RESPONSE;
-  // LLM_MOCK_LOG appends one "METHOD url" line per request, so a test
-  // suite can assert which endpoints a client actually called.
-  const logFile = process.env.LLM_MOCK_LOG;
   const options: MockOptions = {
     port,
-    host,
-    ...(cannedResponse === undefined ? {} : { cannedResponse }),
-    ...(logFile === undefined
-      ? {}
-      : {
-          onRequest: (request) =>
-            appendFileSync(logFile, `${request.method} ${request.url}\n`),
-        }),
+    host: process.env.HOST ?? DEFAULT_HOST,
+    cannedResponse: process.env.LLM_MOCK_CANNED_RESPONSE,
+    onRequest: requestLogger(process.env.LLM_MOCK_LOG),
   };
   const start = provider === "openai" ? startOpenAIMock : startAnthropicMock;
   const mock = await start(options);
