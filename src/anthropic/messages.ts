@@ -1,15 +1,20 @@
-import { once } from "node:events";
-import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { resolve } from "node:path";
 
 import type { FastifyInstance } from "fastify";
 
-import { type AnthropicRequest, parseRequest } from "./schemas";
-import type { AnthropicMockOptions } from "./types";
+import {
+  resolveCannedResponse,
+  resolveModel,
+  type SseEvent,
+  splitText,
+  streamEvents,
+  streamOpeningThenDeltas,
+  writeFrame,
+} from "../sse";
+import type { AnthropicMockOptions } from "../types";
+import { parseAnthropicRequest } from "./schemas";
 
 const DEFAULT_MODEL = "claude-sonnet-4-5";
-const DEFAULT_RESPONSE = "Hi! This is a canned response from anthropic-mock.";
 const DEFAULT_MESSAGE_ID = "msg_mock_0001";
 const DEFAULT_INPUT_TOKENS = 10;
 const DEFAULT_OUTPUT_TOKENS = 1;
@@ -18,42 +23,6 @@ const DEFAULT_CHUNK_SIZE = 16;
 // Combined with setNoDelay below, this delay makes deltas arrive over time
 // rather than in a single burst.
 const DEFAULT_CHUNK_DELAY_MS = 5;
-
-type SseEvent = {
-  readonly event: string;
-  readonly data: object;
-};
-
-const DONE_FRAME = "data: [DONE]\n\n";
-
-const serializeEvent = (event: SseEvent): string =>
-  `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const resolveModel = (body: AnthropicRequest): string =>
-  typeof body.model === "string" && body.model.length > 0
-    ? body.model
-    : DEFAULT_MODEL;
-
-// Fixed-width runs: concatenating the deltas reproduces the text exactly,
-// which the streaming tests assert.
-const splitText = (text: string, size: number): readonly string[] => {
-  if (size <= 0 || text.length === 0) return [text];
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += size)
-    chunks.push(text.slice(i, i + size));
-  return chunks;
-};
-
-const resolveCannedResponse = (options: AnthropicMockOptions): string => {
-  if (options.cannedResponseFile)
-    return readFileSync(resolve(options.cannedResponseFile), "utf8");
-  return options.cannedResponse ?? DEFAULT_RESPONSE;
-};
 
 const textDelta = (text: string): SseEvent => ({
   event: "content_block_delta",
@@ -134,61 +103,6 @@ const buildMessageEvents = (
   messageStopEvent(),
 ];
 
-// Honours backpressure: if the socket buffer fills, wait for drain before
-// the next frame so a long error-mode stream can't exhaust memory.
-const writeFrame = async (
-  raw: ServerResponse,
-  event: SseEvent,
-  delayMs: number,
-): Promise<void> => {
-  if (!raw.write(serializeEvent(event))) await once(raw, "drain");
-  await sleep(delayMs);
-};
-
-const beginStream = (raw: ServerResponse): void => {
-  raw.writeHead(200, {
-    "cache-control": "no-cache",
-    "content-type": "text/event-stream",
-  });
-  // Disable Nagle so each frame is pushed out immediately; otherwise small
-  // frames could be coalesced and arrive as one burst, defeating the stream.
-  raw.socket?.setNoDelay(true);
-};
-
-// reply.hijack() bypasses Fastify's serialization, so each write() is flushed
-// to the wire on its own schedule instead of buffering into one reply body.
-const streamEvents = async (
-  raw: ServerResponse,
-  events: readonly SseEvent[],
-  delayMs: number,
-): Promise<void> => {
-  beginStream(raw);
-  for (const event of events) await writeFrame(raw, event, delayMs);
-  raw.end(DONE_FRAME);
-};
-
-// Opens the stream and cycles the canned text as deltas for `durationMs` —
-// the shared body of both mid-stream failure paths, which differ only in how
-// they terminate.
-const streamOpeningThenDeltas = async (
-  raw: ServerResponse,
-  model: string,
-  chunks: readonly string[],
-  inputTokens: number,
-  delayMs: number,
-  durationMs: number,
-): Promise<void> => {
-  beginStream(raw);
-  await writeFrame(raw, messageStartEvent(model, inputTokens), delayMs);
-  await writeFrame(raw, contentBlockStartEvent(), delayMs);
-  const deadline = Date.now() + durationMs;
-  while (Date.now() < deadline)
-    for (const chunk of chunks) {
-      await writeFrame(raw, textDelta(chunk), delayMs);
-      if (Date.now() >= deadline) break;
-    }
-};
-
 // Channel A (transport): streams opening frames and deltas, then tears the
 // socket down mid-flight with no closing frames — a truncated mid-stream error.
 const streamEventsUntilError = async (
@@ -201,9 +115,9 @@ const streamEventsUntilError = async (
 ): Promise<void> => {
   await streamOpeningThenDeltas(
     raw,
-    model,
+    [messageStartEvent(model, inputTokens), contentBlockStartEvent()],
+    textDelta,
     chunks,
-    inputTokens,
     delayMs,
     errorAfterMs,
   );
@@ -224,9 +138,9 @@ const streamEventsUntilSseError = async (
 ): Promise<void> => {
   await streamOpeningThenDeltas(
     raw,
-    model,
+    [messageStartEvent(model, inputTokens), contentBlockStartEvent()],
+    textDelta,
     chunks,
-    inputTokens,
     delayMs,
     errorAfterMs,
   );
@@ -234,7 +148,7 @@ const streamEventsUntilSseError = async (
   raw.end();
 };
 
-const registerMessagesRoute = (
+const registerAnthropicMessagesRoute = (
   app: FastifyInstance,
   options: AnthropicMockOptions,
 ): void => {
@@ -249,8 +163,8 @@ const registerMessagesRoute = (
   const sseErrorMessage = options.streamSseErrorMessage ?? "Overloaded";
 
   app.post("/v1/messages", async (request, reply) => {
-    const body = parseRequest(request.body);
-    const model = resolveModel(body);
+    const body = parseAnthropicRequest(request.body);
+    const model = resolveModel(body, DEFAULT_MODEL);
     const chunks = splitText(text, chunkSize);
     reply.hijack();
     try {
@@ -287,4 +201,4 @@ const registerMessagesRoute = (
   });
 };
 
-export { registerMessagesRoute };
+export { registerAnthropicMessagesRoute };

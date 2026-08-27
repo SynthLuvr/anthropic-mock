@@ -1,7 +1,7 @@
 {
-  "name": "anthropic-mock",
+  "name": "llm-mock",
   "private": true,
-  "description": "A mock implementation of the Anthropic API for testing purposes",
+  "description": "Mock LLM provider APIs (Anthropic and OpenAI) for testing purposes",
   "type": "module",
   "packageManager": "pnpm@11.15.0",
   "engines": {

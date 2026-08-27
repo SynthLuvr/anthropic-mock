@@ -1,52 +1,72 @@
-# Anthropic Mock
+# LLM Mock
 
 A mock implementation of the [Anthropic
-API](https://docs.anthropic.com/en/api/getting-started) for testing
-purposes. Stand in for the real Anthropic API in test suites so you can
+API](https://docs.anthropic.com/en/api/getting-started) and the [OpenAI
+API](https://platform.openai.com/docs/api-reference) for testing
+purposes. Stand in for the real provider APIs in test suites so you can
 exercise client code (such as [goose](https://github.com/block/goose))
 without network access or API costs.
 
 > **Disclaimer:** This is an unofficial, independent project. It is not
-> affiliated with, endorsed by, or sponsored by Anthropic, PBC.
-> “Anthropic” is a trademark of Anthropic, PBC. This project is also not
-> affiliated with [goose](https://github.com/block/goose) or its
-> maintainers; it simply targets the API surface goose calls.
+> affiliated with, endorsed by, or sponsored by Anthropic, PBC or
+> OpenAI, LLC. “Anthropic” and “Claude” are trademarks of Anthropic,
+> PBC; “OpenAI” and “GPT” are trademarks of OpenAI, LLC. This project is
+> also not affiliated with goose or its maintainers; it simply targets
+> the API surfaces goose calls.
 
-This mock implements the two endpoints goose actually calls against the
-direct Anthropic API:
+Each provider mock implements the endpoints goose actually calls against
+that provider:
 
-- `POST /v1/messages` — streaming chat completions (`"stream": true`)
-- `GET /v1/models` — list available models
+- Anthropic — `POST /v1/messages` (streaming chat completions) and
+  `GET /v1/models`
+- OpenAI — `POST /v1/chat/completions` (streaming and non-streaming) and
+  `GET /v1/models`
 
-Responses are **canned** (fixed) for now, which keeps the mock fast,
+The two mocks are separate servers: both providers expose
+`GET /v1/models`, but the two APIs disagree on that response’s shape, so
+they cannot share one app (see
+[`docs/decisions/0005-add-openai-provider.md`](./docs/decisions/)).
+
+Responses are **canned** (fixed), which keeps the mocks fast,
 deterministic, and dependency-free. Canned text can be supplied inline
 or loaded from a markdown file (see `src/responses/` for example
 fixtures).
 
 ## Features
 
-- **Fastify** HTTP server with the exact routes goose expects
-- **Incremental SSE** `POST /v1/messages` streams the full Anthropic
-  event sequence (`message_start` → `content_block_start` →
-  `content_block_delta` (one per text chunk) → `content_block_stop` →
-  `message_delta` → `message_stop`, terminated by `data: [DONE]`)
-  straight to the socket via `reply.hijack()`, so deltas arrive over
-  time rather than in a single burst — just like the real API
-- **Mid-stream error simulation (two modes)** —
+- **Fastify** HTTP servers with the exact routes each provider’s clients
+  expect
+- **Incremental SSE streaming** for both providers, written straight to
+  the socket via `reply.hijack()`, so deltas arrive over time rather
+  than in a single burst — just like the real APIs
+  - Anthropic: the full event sequence (`message_start` →
+    `content_block_start` → `content_block_delta` (one per text chunk) →
+    `content_block_stop` → `message_delta` → `message_stop`, terminated
+    by `data: [DONE]`) with named `event:` frames
+  - OpenAI: `chat.completion.chunk` frames (`data:` lines only) — a role
+    chunk, one chunk per text delta, a terminal
+    `finish_reason:   "stop"` chunk, then `data: [DONE]`
+- **OpenAI non-streaming mode** — requests without `"stream": true`
+  return a single `chat.completion` JSON body, the OpenAI default
+- **Mid-stream error simulation (two modes, both providers)** —
   - `streamErrorAfterMs`: stream deltas for that many milliseconds and
     then tear the socket down mid-flight (no closing frames, no
     `[DONE]`), leaving the client with a truncated, unparsable response
     — exactly as if the real API hit a transport-level `500`-class error
-    mid-stream.
-  - `streamSseErrorAfterMs` (Channel B): stream deltas, then emit a
-    structured `event: error` SSE frame — the *only* mid-stream error
-    channel the real API uses after a `200` (e.g. `overloaded_error`).
-    The `error.type` and `error.message` are configurable.
-- **`GET /v1/models`** returning `{"data":[{"id":"..."}]}` (a `404` is
-  also accepted by goose, so a working `200` is a safe default)
+    mid-stream
+  - `streamSseErrorAfterMs`: stream deltas, then emit a structured SSE
+    error frame and end the stream cleanly — a *parseable* mid-stream
+    error after the `200` (Anthropic: `event: error` with
+    `{"error":{"type":"overloaded_error",...}}`, its only mid-stream
+    error channel after a 200 (ADR 0004); OpenAI:
+    `data: {"error":{"message":...,"type":"server_error",...}}`). The
+    error type and message are configurable. For non-streaming OpenAI
+    requests the configured error is returned as an HTTP `500` JSON
+    error body after the same delay.
+- **`GET /v1/models`** in each provider’s native shape
 - **In-process** testing via Fastify’s `inject()` (no port needed)
 - **Standalone** server mode for end-to-end runs and for pointing a real
-  client at `ANTHROPIC_HOST`
+  client at `ANTHROPIC_HOST` / `OPENAI_HOST`
 
 ## Design Decisions
 
@@ -69,94 +89,131 @@ directory for the full set.
 pnpm install
 pnpm build           # type-check with tsc
 pnpm test            # run integration tests
-./bin/anthropic-mock  # run the mock server on http://127.0.0.1:8787
+./bin/llm-mock       # Anthropic mock on http://127.0.0.1:8787
+./bin/llm-mock openai  # OpenAI mock on http://127.0.0.1:8788
 ```
 
 ## Usage
 
 ### In-process usage
 
-`createAnthropicMock()` returns a Fastify instance with both routes
-registered. Use Fastify’s `inject()` to make requests without binding a
-port:
+`createAnthropicMock()` / `createOpenAIMock()` return a Fastify instance
+with that provider’s routes registered. Use Fastify’s `inject()` to make
+requests without binding a port:
 
 ``` ts
-import { createAnthropicMock } from "anthropic-mock";
+import { createAnthropicMock, createOpenAIMock } from "llm-mock";
 
-const app = createAnthropicMock();
+const anthropic = createAnthropicMock();
 
-const response = await app.inject({
+const response = await anthropic.inject({
   method: "POST",
   url: "/v1/messages",
   payload: { model: "claude-sonnet-4-5", messages: [], stream: true },
 });
 
-console.log(response.body); // the canned SSE payload
-await app.close();
+console.log(response.body); // the canned Anthropic SSE payload
+await anthropic.close();
+
+const openai = createOpenAIMock();
+const completion = await openai.inject({
+  method: "POST",
+  url: "/v1/chat/completions",
+  payload: { model: "gpt-4o", messages: [] },
+});
+console.log(completion.json()); // { object: "chat.completion", ... }
+await openai.close();
 ```
 
 ### Standalone server (end-to-end)
 
-`startAnthropicMock()` listens on an ephemeral (or chosen) port and
-returns a `{ url, close }` handle:
+`startAnthropicMock()` / `startOpenAIMock()` listen on an ephemeral (or
+chosen) port and return a `{ url, close }` handle:
 
 ``` ts
-import { startAnthropicMock } from "anthropic-mock";
+import { startAnthropicMock, startOpenAIMock } from "llm-mock";
 
-const mock = await startAnthropicMock();
-console.log(mock.url); // http://127.0.0.1:<port>
-await mock.close();
+const anthropic = await startAnthropicMock();
+console.log(anthropic.url); // http://127.0.0.1:<port>
+await anthropic.close();
+
+const openai = await startOpenAIMock();
+console.log(openai.url); // http://127.0.0.1:<port>
+await openai.close();
 ```
 
-For a long-running process, use the `anthropic-mock` launcher
-(configurable via `PORT` and `HOST` env vars, default `127.0.0.1:8787`):
+For a long-running process, use the `llm-mock` launcher. The provider is
+chosen by CLI argument or the `LLM_MOCK_PROVIDER` environment variable
+(default `anthropic`); `PORT` and `HOST` override the defaults
+(`127.0.0.1:8787` for anthropic, `127.0.0.1:8788` for openai):
 
 ``` bash
-./bin/anthropic-mock
-PORT=3000 ./bin/anthropic-mock
+./bin/llm-mock                    # Anthropic on 127.0.0.1:8787
+./bin/llm-mock openai             # OpenAI on 127.0.0.1:8788
+LLM_MOCK_PROVIDER=openai ./bin/llm-mock
+PORT=3000 ./bin/llm-mock openai
 ```
 
 ### Pointing a client at the mock
 
-Most Anthropic-compatible clients let you override the base host. For
-goose, set `ANTHROPIC_HOST` to the mock’s URL:
+Most provider-compatible clients let you override the base host. For
+goose, set `ANTHROPIC_HOST` / `OPENAI_HOST` to the mock’s URL:
 
 ``` bash
 ANTHROPIC_HOST=http://127.0.0.1:8787 ANTHROPIC_API_KEY=test-key goose
+OPENAI_HOST=http://127.0.0.1:8788 OPENAI_API_KEY=test-key goose
 ```
+
+The OpenAI SDKs use `OPENAI_BASE_URL` (or `baseURL`) for the same
+purpose.
 
 ## API
 
 ### `createAnthropicMock(options?): FastifyInstance`
 
-Create a Fastify instance (not yet listening) with `POST /v1/messages`
-and `GET /v1/models` registered. Use `app.inject()` for testing or
-`app.listen()` to run it.
+Create a Fastify instance (not yet listening) with the Anthropic routes
+(`POST /v1/messages`, `GET /v1/models`) registered. Use `app.inject()`
+for testing or `app.listen()` to run it.
 
 ### `startAnthropicMock(options?): Promise<RunningAnthropicMock>`
 
-Create a mock and start it listening. Resolves to `{ url, close }`,
-where `url` is the base URL (e.g. `http://127.0.0.1:54321`).
+Create the Anthropic mock and start it listening. Resolves to
+`{ url, close }`, where `url` is the base URL
+(e.g. `http://127.0.0.1:54321`).
 
-### `AnthropicMockOptions`
+### `createOpenAIMock(options?): FastifyInstance`
 
-| Option                  | Type                | Default               | Description                                                                                                                        |
-|-------------------------|---------------------|-----------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| `host`                  | `string`            | `127.0.0.1`           | Listen host (`startAnthropicMock` only)                                                                                            |
-| `port`                  | `number`            | `0` (ephemeral)       | Listen port (`0` lets the OS choose)                                                                                               |
-| `models`                | `readonly string[]` | Sonnet/Opus/Haiku 4.5 | Model ids returned by `GET /v1/models`                                                                                             |
-| `cannedResponse`        | `string`            | Canned greeting       | Text split across `content_block_delta` frames                                                                                     |
-| `cannedResponseFile`    | `string`            | —                     | Path to a file whose contents are the canned text                                                                                  |
-| `inputTokens`           | `number`            | `10`                  | `usage.input_tokens` reported in `message_start`                                                                                   |
-| `outputTokens`          | `number`            | `1`                   | `usage.output_tokens` reported in `message_delta`                                                                                  |
-| `streamChunkSize`       | `number`            | `16`                  | Characters per `content_block_delta` text chunk                                                                                    |
-| `streamChunkDelayMs`    | `number`            | `5`                   | Milliseconds paused between streamed frames                                                                                        |
-| `streamErrorAfterMs`    | `number`            | —                     | When set, stream deltas this long, then abort the socket mid-flight (truncated, unparsable response)                               |
-| `streamSseErrorAfterMs` | `number`            | —                     | When set, stream deltas this long, then emit a structured SSE `event: error` frame and end the stream (Channel B mid-stream error) |
-| `streamSseErrorType`    | `string`            | `overloaded_error`    | The `error.type` inside the mid-stream SSE error event                                                                             |
-| `streamSseErrorMessage` | `string`            | `Overloaded`          | The `error.message` inside the mid-stream SSE error event                                                                          |
+Create a Fastify instance (not yet listening) with the OpenAI routes
+(`POST /v1/chat/completions`, `GET /v1/models`) registered.
 
-### `RunningAnthropicMock`
+### `startOpenAIMock(options?): Promise<RunningOpenAIMock>`
+
+Create the OpenAI mock and start it listening. Resolves to
+`{ url, close }`.
+
+### Options
+
+One option set — `MockOptions` (aliased as `AnthropicMockOptions` and
+`OpenAIMockOptions`) — configures both provider mocks. Where defaults
+differ per provider, both are listed.
+
+| Option                  | Type                | Default                                                                    | Description                                                                                                                                |
+|-------------------------|---------------------|----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `host`                  | `string`            | `127.0.0.1`                                                                | Listen host (`start*` functions only)                                                                                                      |
+| `port`                  | `number`            | `0` (ephemeral)                                                            | Listen port (`0` lets the OS choose)                                                                                                       |
+| `models`                | `readonly string[]` | Anthropic: Sonnet/Opus/Haiku 4.5; OpenAI: `gpt-4o`/`gpt-4o-mini`/`gpt-4.1` | Model ids returned by `GET /v1/models`                                                                                                     |
+| `cannedResponse`        | `string`            | Canned greeting                                                            | Text split across delta frames                                                                                                             |
+| `cannedResponseFile`    | `string`            | —                                                                          | Path to a file whose contents are the canned text                                                                                          |
+| `inputTokens`           | `number`            | `10`                                                                       | Prompt/input tokens reported in usage (`usage.input_tokens` / `usage.prompt_tokens`)                                                       |
+| `outputTokens`          | `number`            | `1`                                                                        | Completion tokens reported in usage (`usage.output_tokens` / `usage.completion_tokens`)                                                    |
+| `streamChunkSize`       | `number`            | `16`                                                                       | Characters per streamed text chunk                                                                                                         |
+| `streamChunkDelayMs`    | `number`            | `5`                                                                        | Milliseconds paused between streamed frames                                                                                                |
+| `streamErrorAfterMs`    | `number`            | —                                                                          | When set, stream deltas this long, then abort the socket mid-flight (truncated, unparsable response)                                       |
+| `streamSseErrorAfterMs` | `number`            | —                                                                          | When set, stream deltas this long, then emit a structured SSE error frame and end the stream (OpenAI non-streaming: HTTP `500` error body) |
+| `streamSseErrorType`    | `string`            | Anthropic: `overloaded_error`; OpenAI: `server_error`                      | The error type inside the mid-stream SSE error frame                                                                                       |
+| `streamSseErrorMessage` | `string`            | Anthropic: `Overloaded`; OpenAI: `The server had an error…`                | The error message inside the mid-stream SSE error frame                                                                                    |
+
+### `RunningAnthropicMock` / `RunningOpenAIMock`
 
 | Field   | Type                  | Description                       |
 |---------|-----------------------|-----------------------------------|
@@ -165,7 +222,7 @@ where `url` is the base URL (e.g. `http://127.0.0.1:54321`).
 
 ## Endpoints
 
-### `POST /v1/messages`
+### `POST /v1/messages` (Anthropic)
 
 Accepts a JSON request body (model, messages, system, tools, …). The
 mock is lenient: it reads `model` (falling back to `claude-sonnet-4-5`)
@@ -224,9 +281,66 @@ Use `streamSseErrorType` and `streamSseErrorMessage` to customise the
 transport drop), this delivers a *parseable* error the client can react
 to by error type.
 
+### `POST /v1/chat/completions` (OpenAI)
+
+Accepts a JSON request body (model, messages, tools, …). The mock is
+lenient: it reads `model` (falling back to `gpt-4o`) and echoes it in
+the response, and honours the `stream` flag.
+
+With `"stream": true` it replies with a canned SSE stream of
+`chat.completion.chunk` frames — `data:` lines only, no `event:` names —
+terminated by `data: [DONE]`:
+
+``` text
+data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mock_0000","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mock_0000","choices":[{"index":0,"delta":{"content":"Hi! This is "},"logprobs":null,"finish_reason":null}]}
+
+... one chunk per text chunk ...
+
+data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mock_0000","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}
+
+data: [DONE]
+```
+
+Without `stream` (the OpenAI default) it returns a single
+`chat.completion` JSON body:
+
+``` json
+{
+  "id": "chatcmpl-mock-0001",
+  "object": "chat.completion",
+  "created": 1735689600,
+  "model": "gpt-4o",
+  "system_fingerprint": "fp_llm_mock_0000",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "Hi! This is a canned response from llm-mock." },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 10, "completion_tokens": 1, "total_tokens": 11 }
+}
+```
+
+Both mid-stream error modes apply to streaming requests exactly as for
+Anthropic: `streamErrorAfterMs` aborts the socket mid-flight (no stop
+chunk, no `[DONE]`), while `streamSseErrorAfterMs` emits a parseable
+error frame and ends cleanly:
+
+``` text
+data: {"error":{"message":"The server had an error while processing your request. Sorry about that!","type":"server_error","param":null,"code":null}}
+```
+
+For non-streaming requests, a configured error mode fails the request
+after the same delay with that error object as an HTTP `500` body.
+
 ### `GET /v1/models`
 
-Returns a list of models. Only `id` is consumed by goose:
+Each mock returns the model list in its provider’s native shape.
+Anthropic (only `id` is consumed by goose):
 
 ``` json
 {
@@ -234,6 +348,19 @@ Returns a list of models. Only `id` is consumed by goose:
     { "id": "claude-sonnet-4-5", "type": "model", "display_name": "claude-sonnet-4-5" },
     { "id": "claude-opus-4-5", "type": "model", "display_name": "claude-opus-4-5" },
     { "id": "claude-haiku-4-5", "type": "model", "display_name": "claude-haiku-4-5" }
+  ]
+}
+```
+
+OpenAI:
+
+``` json
+{
+  "object": "list",
+  "data": [
+    { "id": "gpt-4o", "object": "model", "created": 1735689600, "owned_by": "system" },
+    { "id": "gpt-4o-mini", "object": "model", "created": 1735689600, "owned_by": "system" },
+    { "id": "gpt-4.1", "object": "model", "created": 1735689600, "owned_by": "system" }
   ]
 }
 ```

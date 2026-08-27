@@ -50,6 +50,20 @@ const writeGooseProfile = (configHome: string, model: string): void => {
   writeFileSync(join(configHome, "goose", "config.yaml"), lines.join("\n"));
 };
 
+// Same idea for the OpenAI provider: OPENAI_HOST points goose at the mock.
+const writeGooseOpenAIProfile = (configHome: string, model: string): void => {
+  const lines = [
+    "active_provider: openai",
+    "providers:",
+    "  openai:",
+    "    enabled: true",
+    `    model: ${model}`,
+    "    configured: true",
+    "",
+  ];
+  writeFileSync(join(configHome, "goose", "config.yaml"), lines.join("\n"));
+};
+
 const runGoose = (
   scratch: Scratch,
   mockUrl: string,
@@ -67,6 +81,27 @@ const runGoose = (
       XDG_STATE_HOME: scratch.stateHome,
       ANTHROPIC_HOST: mockUrl,
       ANTHROPIC_API_KEY: "test-key",
+      GOOSE_TELEMETRY_ENABLED: "false",
+    },
+  });
+
+const runGooseOpenAI = (
+  scratch: Scratch,
+  mockUrl: string,
+  prompt: string,
+  timeoutMs = 60000,
+): ReturnType<typeof execa> =>
+  execa("goose", ["run", "-t", prompt, "--no-session"], {
+    cwd: scratch.root,
+    reject: false,
+    timeout: timeoutMs,
+    env: {
+      ...process.env,
+      XDG_CONFIG_HOME: scratch.configHome,
+      XDG_DATA_HOME: scratch.dataHome,
+      XDG_STATE_HOME: scratch.stateHome,
+      OPENAI_HOST: mockUrl,
+      OPENAI_API_KEY: "test-key",
       GOOSE_TELEMETRY_ENABLED: "false",
     },
   });
@@ -114,7 +149,7 @@ const trackMessagesRequests = (app: FastifyInstance): RequestCounts => {
         type: "error",
         error: {
           type: "invalid_request_error",
-          message: "anthropic-mock loop breaker",
+          message: "llm-mock loop breaker",
         },
       });
   });
@@ -148,9 +183,11 @@ export {
   gooseOutput,
   MAX_STREAMING_REQUESTS,
   runGoose,
+  runGooseOpenAI,
   startMock,
   TEST_TIMEOUT_MS,
   teardown,
   trackMessagesRequests,
+  writeGooseOpenAIProfile,
   writeGooseProfile,
 };
