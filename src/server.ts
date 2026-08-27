@@ -1,4 +1,7 @@
+import { appendFileSync } from "node:fs";
+
 import { startAnthropicMock, startOpenAIMock } from "./create-mock";
+import type { MockOptions } from "./types";
 
 // Distinct defaults so both providers can run side by side.
 const DEFAULT_ANTHROPIC_PORT = 8787;
@@ -30,8 +33,24 @@ const run = async (): Promise<void> => {
   const port =
     process.env.PORT && !Number.isNaN(envPort) ? envPort : defaultPort;
   const host = process.env.HOST ?? DEFAULT_HOST;
+  // LLM_MOCK_CANNED_RESPONSE overrides the default canned text.
+  const cannedResponse = process.env.LLM_MOCK_CANNED_RESPONSE;
+  // LLM_MOCK_LOG appends one "METHOD url" line per request, so a test
+  // suite can assert which endpoints a client actually called.
+  const logFile = process.env.LLM_MOCK_LOG;
+  const options: MockOptions = {
+    port,
+    host,
+    ...(cannedResponse === undefined ? {} : { cannedResponse }),
+    ...(logFile === undefined
+      ? {}
+      : {
+          onRequest: (request) =>
+            appendFileSync(logFile, `${request.method} ${request.url}\n`),
+        }),
+  };
   const start = provider === "openai" ? startOpenAIMock : startAnthropicMock;
-  const mock = await start({ port, host });
+  const mock = await start(options);
   console.log(`llm-mock (${provider}) listening on ${mock.url}`);
 };
 
