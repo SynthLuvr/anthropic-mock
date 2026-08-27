@@ -1,7 +1,7 @@
 import ky, { type KyInstance } from "ky";
 
-import { startAnthropicMock } from "../create-mock";
-import type { AnthropicMockOptions } from "../types";
+import { startAnthropicMock, startOpenAIMock } from "../create-mock";
+import type { MockOptions, RunningMock } from "../types";
 
 // ky retries transient connection errors by default; disabling retries keeps
 // failure-path assertions immediate and deterministic.
@@ -14,12 +14,18 @@ type TestServer = {
   readonly close: () => Promise<void>;
 };
 
-const startTestServer = async (
-  options?: AnthropicMockOptions,
-): Promise<TestServer> => {
-  const { url, close } = await startAnthropicMock(options);
-  return { url, client: createClient(url), close };
-};
+const withClient = (mock: RunningMock): TestServer => ({
+  url: mock.url,
+  client: createClient(mock.url),
+  close: mock.close,
+});
+
+const startTestServer = async (options?: MockOptions): Promise<TestServer> =>
+  withClient(await startAnthropicMock(options));
+
+const startOpenAITestServer = async (
+  options?: MockOptions,
+): Promise<TestServer> => withClient(await startOpenAIMock(options));
 
 export type { TestServer };
-export { createClient, startTestServer };
+export { createClient, startOpenAITestServer, startTestServer };

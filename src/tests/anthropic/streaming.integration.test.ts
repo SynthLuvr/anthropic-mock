@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 import { type } from "arktype";
 import { describe, expect, it } from "vitest";
 
-import { startTestServer } from "./helpers";
+import { startTestServer } from "../helpers";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
-const RESPONSES_DIR = join(TESTS_DIR, "..", "responses");
+const RESPONSES_DIR = join(TESTS_DIR, "..", "..", "responses");
 
 const readResponse = (name: string): string =>
   readFileSync(join(RESPONSES_DIR, name), "utf8");

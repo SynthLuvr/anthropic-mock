@@ -46,7 +46,7 @@ describe.skipIf(!gooseInstalled)(
     it(
       "silently succeeds with partial output instead of surfacing or retrying a mid-stream SSE rate-limit error",
       async () => {
-        writeGooseProfile(scratch.configHome, "claude-sonnet-4-5");
+        writeGooseProfile(scratch.configHome, "anthropic", "claude-sonnet-4-5");
 
         app = createAnthropicMock({
           cannedResponse: CANNED_REPLY,
@@ -60,6 +60,7 @@ describe.skipIf(!gooseInstalled)(
 
         const result = await runGoose(
           scratch,
+          "anthropic",
           url,
           "Reply with the test token.",
           GOOSE_TIMEOUT_MS,

@@ -1,4 +1,4 @@
-type AnthropicMockOptions = {
+type MockOptions = {
   readonly host?: string;
   readonly port?: number;
   readonly models?: readonly string[];
@@ -9,21 +9,26 @@ type AnthropicMockOptions = {
   readonly streamChunkSize?: number;
   readonly streamChunkDelayMs?: number;
   // When set, streams deltas for this many milliseconds then tears the
-  // socket down mid-flight (no closing frames) — a mid-stream 500-class error.
+  // socket down mid-flight (no closing frames) — a mid-stream 500-class
+  // transport error.
   readonly streamErrorAfterMs?: number;
   // When set, streams deltas for this many milliseconds, then emits a
-  // structured SSE `event: error` frame and ends the stream cleanly — a
-  // parseable mid-stream error after the 200 (Channel B; ADR 0004).
+  // structured SSE error frame and ends the stream cleanly — a parseable
+  // mid-stream error after the 200 (Anthropic Channel B, ADR 0004; the
+  // OpenAI equivalent is a `data: {"error": ...}` frame).
   readonly streamSseErrorAfterMs?: number;
-  // The error.type in the SSE error event (default "overloaded_error").
+  // The error type inside the mid-stream SSE error frame. Anthropic
+  // default: "overloaded_error"; OpenAI default: "server_error".
   readonly streamSseErrorType?: string;
-  // The error.message in the SSE error event (default "Overloaded").
+  // The error message inside the mid-stream SSE error frame. Anthropic
+  // default: "Overloaded"; OpenAI default: "The server had an error while
+  // processing your request. Sorry about that!".
   readonly streamSseErrorMessage?: string;
 };
 
-type RunningAnthropicMock = {
+type RunningMock = {
   readonly url: string;
   readonly close: () => Promise<void>;
 };
 
-export type { AnthropicMockOptions, RunningAnthropicMock };
+export type { MockOptions, RunningMock };

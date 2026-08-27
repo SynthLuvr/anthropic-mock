@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
+import type { MockOptions } from "../types";
 import type { AnthropicModel } from "./schemas";
-import type { AnthropicMockOptions } from "./types";
 
 const DEFAULT_MODELS = [
   "claude-sonnet-4-5",
@@ -15,9 +15,9 @@ const toModel = (id: string): AnthropicModel => ({
   display_name: id,
 });
 
-const registerModelsRoute = (
+const registerAnthropicModelsRoute = (
   app: FastifyInstance,
-  options: AnthropicMockOptions,
+  options: MockOptions,
 ): void => {
   const models = options.models ?? DEFAULT_MODELS;
   app.get("/v1/models", async (_request, reply) =>
@@ -25,4 +25,4 @@ const registerModelsRoute = (
   );
 };
 
-export { registerModelsRoute };
+export { registerAnthropicModelsRoute };

@@ -14,7 +14,7 @@ done
 project_root="$(cd "$(dirname "$self")/.." && pwd)"
 
 cd "$project_root" || {
-  echo "anthropic-mock: cannot cd to project root ($project_root)" >&2
+  echo "llm-mock: cannot cd to project root ($project_root)" >&2
   exit 1
 }
 

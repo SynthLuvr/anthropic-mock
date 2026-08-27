@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { modelsResponse } from "../schemas";
-import { startTestServer, type TestServer } from "./helpers";
+import { openAIModelsResponse } from "../../openai/schemas";
+import { startOpenAITestServer, type TestServer } from "../helpers";
 
-describe("GET /v1/models (integration)", () => {
+describe("GET /v1/models, OpenAI shape (integration)", () => {
   let server: TestServer;
 
   beforeEach(async () => {
-    server = await startTestServer();
+    server = await startOpenAITestServer();
   });
 
   afterEach(async () => {
@@ -15,21 +15,21 @@ describe("GET /v1/models (integration)", () => {
   });
 
   it("returns the default model list", async () => {
-    const parsed = modelsResponse.assert(
+    const parsed = openAIModelsResponse.assert(
       await server.client.get("v1/models").json(),
     );
     expect(parsed.data.map((m) => m.id)).toEqual([
-      "claude-sonnet-4-5",
-      "claude-opus-4-5",
-      "claude-haiku-4-5",
+      "gpt-4o",
+      "gpt-4o-mini",
+      "gpt-4.1",
     ]);
   });
 
   it("returns a custom model list", async () => {
-    const custom = await startTestServer({
+    const custom = await startOpenAITestServer({
       models: ["custom-model-a", "custom-model-b"],
     });
-    const parsed = modelsResponse.assert(
+    const parsed = openAIModelsResponse.assert(
       await custom.client.get("v1/models").json(),
     );
     expect(parsed.data.map((m) => m.id)).toEqual([
@@ -39,14 +39,16 @@ describe("GET /v1/models (integration)", () => {
     await custom.close();
   });
 
-  it("shapes each entry like the Anthropic API", async () => {
-    const parsed = modelsResponse.assert(
+  it("shapes each entry like the OpenAI API", async () => {
+    const parsed = openAIModelsResponse.assert(
       await server.client.get("v1/models").json(),
     );
+    expect(parsed.object).toBe("list");
     expect(parsed.data[0]).toEqual({
-      id: "claude-sonnet-4-5",
-      type: "model",
-      display_name: "claude-sonnet-4-5",
+      id: "gpt-4o",
+      object: "model",
+      created: 1735689600,
+      owned_by: "system",
     });
   });
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { startTestServer, type TestServer } from "./helpers";
+import { startTestServer, type TestServer } from "../helpers";
 
 const sseEventTypes = (body: string): readonly string[] =>
   body

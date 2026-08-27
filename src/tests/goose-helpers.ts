@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { execa } from "execa";
 import type { FastifyInstance } from "fastify";
 
+type GooseProvider = "anthropic" | "openai";
+
 // Synchronous so describe.skipIf can branch at import time.
 const gooseInstalled = (() => {
   try {
@@ -34,14 +36,15 @@ const createScratch = (): Scratch => {
   return { root, configHome, dataHome, stateHome };
 };
 
-// The dummy ANTHROPIC_API_KEY satisfies goose's credential gate without
-// touching the system keyring; ANTHROPIC_HOST (set at run time) is what
-// actually points the provider at the mock.
-const writeGooseProfile = (configHome: string, model: string): void => {
+const writeGooseProfile = (
+  configHome: string,
+  provider: GooseProvider,
+  model: string,
+): void => {
   const lines = [
-    "active_provider: anthropic",
+    `active_provider: ${provider}`,
     "providers:",
-    "  anthropic:",
+    `  ${provider}:`,
     "    enabled: true",
     `    model: ${model}`,
     "    configured: true",
@@ -50,8 +53,22 @@ const writeGooseProfile = (configHome: string, model: string): void => {
   writeFileSync(join(configHome, "goose", "config.yaml"), lines.join("\n"));
 };
 
+// <PROVIDER>_HOST points goose at the mock; the dummy API key satisfies
+// goose's credential gate without touching the system keyring.
+const providerEnv = (
+  provider: GooseProvider,
+  mockUrl: string,
+): Record<string, string> => {
+  const prefix = provider === "openai" ? "OPENAI" : "ANTHROPIC";
+  return {
+    [`${prefix}_HOST`]: mockUrl,
+    [`${prefix}_API_KEY`]: "test-key",
+  };
+};
+
 const runGoose = (
   scratch: Scratch,
+  provider: GooseProvider,
   mockUrl: string,
   prompt: string,
   timeoutMs = 60000,
@@ -65,8 +82,7 @@ const runGoose = (
       XDG_CONFIG_HOME: scratch.configHome,
       XDG_DATA_HOME: scratch.dataHome,
       XDG_STATE_HOME: scratch.stateHome,
-      ANTHROPIC_HOST: mockUrl,
-      ANTHROPIC_API_KEY: "test-key",
+      ...providerEnv(provider, mockUrl),
       GOOSE_TELEMETRY_ENABLED: "false",
     },
   });
@@ -114,7 +130,7 @@ const trackMessagesRequests = (app: FastifyInstance): RequestCounts => {
         type: "error",
         error: {
           type: "invalid_request_error",
-          message: "anthropic-mock loop breaker",
+          message: "llm-mock loop breaker",
         },
       });
   });

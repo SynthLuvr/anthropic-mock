@@ -25,10 +25,8 @@ channels:
 - **Channel B — an SSE `error` event**, which can arrive *mid-stream*
   after a `200`. The streaming docs give the exact shape:
 
-  ``` text
-  event: error
-  data: {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
-  ```
+      event: error
+      data: {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
 
   The published mid-stream example is `overloaded_error` (the streaming
   counterpart of HTTP `529`). There is no dedicated `rate_limit` SSE
@@ -57,10 +55,8 @@ Add three options to `AnthropicMockOptions`:
 
 The error frame matches Anthropic’s documented shape verbatim:
 
-``` text
-event: error
-data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
-```
+    event: error
+    data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
 
 After the error the stream ends with **none** of the normal closing
 frames (`content_block_stop`, `message_delta`, `message_stop`) and no

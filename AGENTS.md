@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents working in this repository.
 
-This project mocks the Anthropic API for testing purposes.
+This project mocks the Anthropic and OpenAI APIs for testing purposes.
 
 ## Quick Start
 
