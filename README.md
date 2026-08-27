@@ -25,7 +25,7 @@ that provider:
 The two mocks are separate servers: both providers expose
 `GET /v1/models`, but the two APIs disagree on that response’s shape, so
 they cannot share one app (see
-[`docs/decisions/0005-add-openai-provider.md`](./docs/decisions/)).
+[`docs/decisions/0005-add-openai-provider.md`](./docs/decisions/0005-add-openai-provider.md)).
 
 Responses are **canned** (fixed), which keeps the mocks fast,
 deterministic, and dependency-free. Canned text can be supplied inline
@@ -44,8 +44,8 @@ fixtures).
     `content_block_stop` → `message_delta` → `message_stop`, terminated
     by `data: [DONE]`) with named `event:` frames
   - OpenAI: `chat.completion.chunk` frames (`data:` lines only) — a role
-    chunk, one chunk per text delta, a terminal
-    `finish_reason:   "stop"` chunk, then `data: [DONE]`
+    chunk, one chunk per text delta, a terminal `finish_reason: "stop"`
+    chunk, then `data: [DONE]`
 - **OpenAI non-streaming mode** — requests without `"stream": true`
   return a single `chat.completion` JSON body, the OpenAI default
 - **Mid-stream error simulation (two modes, both providers)** —
