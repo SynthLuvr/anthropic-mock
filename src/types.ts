@@ -1,3 +1,8 @@
+type MockRequest = {
+  readonly method: string;
+  readonly url: string;
+};
+
 type MockOptions = {
   readonly host?: string;
   readonly port?: number;
@@ -8,6 +13,9 @@ type MockOptions = {
   readonly outputTokens?: number;
   readonly streamChunkSize?: number;
   readonly streamChunkDelayMs?: number;
+  // Observes each request just before its route handler runs; the
+  // standalone server wires this to LLM_MOCK_LOG.
+  readonly onRequest?: (request: MockRequest) => void;
   // When set, streams deltas for this many milliseconds then tears the
   // socket down mid-flight (no closing frames) — a mid-stream 500-class
   // transport error.
@@ -31,4 +39,4 @@ type RunningMock = {
   readonly close: () => Promise<void>;
 };
 
-export type { MockOptions, RunningMock };
+export type { MockOptions, MockRequest, RunningMock };

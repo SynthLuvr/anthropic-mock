@@ -153,7 +153,28 @@ chosen by CLI argument or the `LLM_MOCK_PROVIDER` environment variable
 ./bin/llm-mock openai             # OpenAI on 127.0.0.1:8788
 LLM_MOCK_PROVIDER=openai ./bin/llm-mock
 PORT=3000 ./bin/llm-mock openai
+LLM_MOCK_CANNED_RESPONSE='canned reply' ./bin/llm-mock
+LLM_MOCK_LOG=requests.log ./bin/llm-mock
 ```
+
+`LLM_MOCK_CANNED_RESPONSE` overrides the default canned text, and
+`LLM_MOCK_LOG` names a file to append one `METHOD url` line per request
+— handy for asserting, from a test suite, which endpoints a client
+actually called.
+
+### Consuming as a dependency
+
+The package’s `exports` map points straight at the TypeScript source
+(`src/create-mock.ts`), so a consumer needs TypeScript-aware tooling
+(`tsx`, `vitest`, …) to import it. Install it as a local link, for
+example from a sibling checkout:
+
+``` bash
+pnpm add -D llm-mock@link:../anthropic-mock
+```
+
+The `llm-mock` bin is exposed alongside, so the standalone server can be
+spawned from `node_modules/.bin/llm-mock` as well.
 
 ### Pointing a client at the mock
 
@@ -212,6 +233,7 @@ defaults differ per provider, both are listed.
 | `streamSseErrorAfterMs` | `number` | — | When set, stream deltas this long, then emit a structured SSE error frame and end the stream (OpenAI non-streaming: HTTP `500` error body) |
 | `streamSseErrorType` | `string` | Anthropic: `overloaded_error`; OpenAI: `server_error` | The error type inside the mid-stream SSE error frame |
 | `streamSseErrorMessage` | `string` | Anthropic: `Overloaded`; OpenAI: `The server had an error…` | The error message inside the mid-stream SSE error frame |
+| `onRequest` | `(request: { method, url }) => void` | — | Observes each request just before its handler runs; the standalone server wires this to `LLM_MOCK_LOG` |
 
 ### `RunningMock`
 
