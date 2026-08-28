@@ -1,0 +1,220 @@
+name: Release
+
+# Manually triggered publish to npm using OIDC "trusted publishing" — no
+# long-lived npm token (NPM_TOKEN) is used. Authentication is handled by a
+# short-lived, per-run OIDC token that npm verifies against the "Trusted
+# Publisher" configured on npmjs.com (the same setup as type-a-bin and
+# ts-canon).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Exact version to publish (e.g. 0.2.0). Leave blank to apply the
+          semver bump selected below.
+        required: false
+        default: ""
+      bump:
+        description: Semver bump to apply (ignored when an exact version is given).
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+# contents: write      -> push the release branch/tag, open the GitHub release
+# pull-requests: write -> open and merge the version-bump PR (see below)
+# id-token:  write     -> required for npm OIDC trusted publishing + provenance.
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+# Releases mutate the repo (PR + tag) and the npm registry, so never run two
+# at once and never cancel one mid-flight.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Only release from the default branch — keeps tags and the npm registry
+    # aligned with what's on main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: pnpm/action-setup@v6.0.10
+
+      # registry-url tells npm which registry to publish to; the actual
+      # authentication is the OIDC exchange (id-token: write above) checked
+      # against the npm trusted-publisher config. No NPM_TOKEN is needed.
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "26"
+          # npm trusted-publishing guidance: never cache in release builds.
+          package-manager-cache: false
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install pandoc (pinned for Markdown lint/format)
+        run: |
+          wget -q https://github.com/jgm/pandoc/releases/download/3.10.2/pandoc-3.10.2-1-amd64.deb
+          sudo dpkg -i pandoc-3.10.2-1-amd64.deb
+          pandoc --version | head -1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Bump version
+        id: bump
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          if [ -n "$VERSION_INPUT" ]; then
+            if ! printf '%s' "$VERSION_INPUT" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+              echo "::error::'$VERSION_INPUT' is not a valid semver version"
+              exit 1
+            fi
+            npm version "$VERSION_INPUT" --no-git-tag-version
+          else
+            npm version "$BUMP" --no-git-tag-version >/dev/null
+          fi
+          new_version="$(node -p "require('./package.json').version")"
+          echo "NEW_VERSION=${new_version}" >> "$GITHUB_ENV"
+          echo "version=${new_version}" >> "$GITHUB_OUTPUT"
+
+      # Publish via the npm CLI — it performs the OIDC token exchange against
+      # the configured trusted publisher. pnpm drives everything else; npm
+      # publish is the documented command for OIDC trusted publishing.
+      # Provenance (build attestation) is generated automatically.
+      # Skip publish when the version is already on npm, so a run that
+      # published but failed at a later step can be re-run to finish the
+      # tag/release bookkeeping instead of failing with EPUBLISHCONFLICT.
+      - name: Publish to npm
+        id: publish
+        run: |
+          set -o pipefail
+          if npm view "@synthluvr/llm-mock@${NEW_VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::@synthluvr/llm-mock@${NEW_VERSION} is already on npm; skipping publish"
+          else
+            npm publish --provenance 2>&1 | tee /tmp/publish.log
+          fi
+
+      # Both failure modes are cryptic in raw logs: the registry masks a
+      # rejected trusted-publisher exchange as a bare E404, and a
+      # provenance/repository mismatch surfaces as E422.
+      - name: Diagnose publish failure
+        if: failure() && steps.publish.outcome == 'failed'
+        run: |
+          if grep -q 'E404' /tmp/publish.log; then
+            echo "::error title=E404 on PUT::The registry rejected the OIDC trusted-publisher exchange. Fix on npmjs.com -> @synthluvr/llm-mock -> Settings -> Trusted publishing: repository owner 'SynthLuvr', repository 'anthropic-mock', workflow filename 'release.yml', environment left empty, allowed action 'npm publish'. Docs: https://docs.npmjs.com/trusted-publishers"
+          elif grep -q 'E422' /tmp/publish.log; then
+            echo "::error title=E422 provenance mismatch::The registry could not verify the provenance bundle. With --provenance, package.json's repository.url must match the provenance repository: https://github.com/SynthLuvr/anthropic-mock. Keep that field in sync with the repo."
+          fi
+
+      # The "main" ruleset (Require a pull request before merging, no bypass
+      # actors) rejects direct pushes to main with GH013, so the bump goes
+      # through a short-lived PR. Its 0-approving-reviews requirement lets the
+      # workflow merge its own PR immediately. Branches and tags are not
+      # covered by the ruleset and can be pushed directly. Merges made with
+      # the default github.token never trigger other workflows, so this merge
+      # does not start other workflows; the next human push to main will.
+      #
+      # Requires the repo setting "Allow GitHub Actions to create and approve
+      # pull requests" (Settings -> Actions -> General -> Workflow
+      # permissions); without it gh pr create fails with "GitHub Actions is
+      # not permitted to create or approve pull requests" even though the
+      # token has pull-requests: write.
+      #
+      # Re-runnable: a partially-failed earlier attempt may have left the
+      # release branch and/or its PR behind. The workflow owns release/*
+      # branches, so an unconditional force push supersedes the stale copy,
+      # and an already-open PR is reused instead of recreated.
+      - name: Open and merge version-bump PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="release/v${NEW_VERSION}"
+          # checkout detaches HEAD; carry the bump onto a release branch.
+          git checkout -B "$branch"
+          git add package.json
+          git commit -m "chore(release): v${NEW_VERSION}"
+          git push --force origin "$branch"
+          pr_url="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url')"
+          if [ -z "$pr_url" ]; then
+            pr_url="$(gh pr create --base main --head "$branch" \
+              --title "chore(release): v${NEW_VERSION}" \
+              --body "Automated version bump for the v${NEW_VERSION} release (@synthluvr/llm-mock@${NEW_VERSION} is on npm).")"
+          fi
+          if [ "$(gh pr view "$pr_url" --json state --jq .state)" = "OPEN" ]; then
+            gh pr merge "$pr_url" --squash --delete-branch
+          fi
+          merge_sha="$(gh pr view "$pr_url" --json mergeCommit --jq .mergeCommit.oid)"
+          echo "MERGE_SHA=${merge_sha}" >> "$GITHUB_ENV"
+
+      # Only tag and release once npm has accepted the package, so a failed
+      # publish never leaves an orphan tag or release.
+      #
+      # MERGE_SHA is born on the server via the squash merge and is NOT in
+      # this depth-1 clone — fetch it before tagging. Tolerate an existing
+      # tag/release so a re-run that only failed here can finish.
+      - name: Tag and create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          main_sha="$(git rev-parse origin/main)"
+          if [ "$main_sha" != "$MERGE_SHA" ]; then
+            echo "::error::origin/main (${main_sha}) is no longer the release merge (${MERGE_SHA}); refusing to tag the wrong commit"
+            exit 1
+          fi
+          if git ls-remote --exit-code origin "refs/tags/v${NEW_VERSION}" >/dev/null 2>&1; then
+            echo "::notice::tag v${NEW_VERSION} already exists; skipping tag push"
+          else
+            git tag "v${NEW_VERSION}" "${MERGE_SHA}"
+            git push origin "v${NEW_VERSION}"
+          fi
+          if gh release view "v${NEW_VERSION}" >/dev/null 2>&1; then
+            echo "::notice::release v${NEW_VERSION} already exists; skipping"
+          else
+            gh release create "v${NEW_VERSION}" \
+              --title "v${NEW_VERSION}" \
+              --notes "Published @synthluvr/llm-mock@${NEW_VERSION} to npm: https://www.npmjs.com/package/@synthluvr/llm-mock/v/${NEW_VERSION}"
+          fi
+
+  dist-branch:
+    # `dist` snapshot fallback for git-ref consumption (ADR 0006: npm is the
+    # primary channel; `#dist` is the git-tarball fallback, the pattern
+    # proven by type-a-bin's `#dist` usage). Runs only after npm accepted
+    # the package and the tag exists, so the pushed snapshot is exactly the
+    # published release commit.
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - name: Push release snapshot to dist branch
+        run: git push origin HEAD:refs/heads/dist --force
