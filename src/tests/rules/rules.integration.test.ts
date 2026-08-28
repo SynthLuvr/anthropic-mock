@@ -471,34 +471,48 @@ describe("LLM_MOCKINGBIRD_RULES standalone server (integration)", () => {
     throw new Error(`llm-mockingbird did not start: ${output.trim()}`);
   };
 
+  // Each test gets its own directory holding rules.json.
+  const writeRulesFile = (
+    prefix: string,
+    contents: unknown,
+  ): { root: string; path: string } => {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    writeFileSync(join(root, "rules.json"), JSON.stringify(contents));
+    return { root, path: join(root, "rules.json") };
+  };
+
+  const spawnRulesServer = (rulesPath: string): MockChild =>
+    spawn(process.execPath, ["--import", "tsx", "src/server.ts", "anthropic"], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        PORT: "0",
+        HOST: "127.0.0.1",
+        LLM_MOCKINGBIRD_RULES: rulesPath,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+  const stopServer = (child: MockChild): Promise<void> =>
+    new Promise((resolve) => {
+      child.kill("SIGTERM");
+      child.on("close", () => resolve());
+      setTimeout(resolve, 5_000);
+    });
+
   it("serves rules loaded from a JSON file", { timeout: 30_000 }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "llm-mockingbird-rules-env-"));
-    const rulesPath = join(root, "rules.json");
-    writeFileSync(
-      rulesPath,
-      JSON.stringify({
+    const { root, path: rulesPath } = writeRulesFile(
+      "llm-mockingbird-rules-env-",
+      {
         rules: [
           {
             when: { pattern: "hello {{who}}" },
             reply: "Hello, {{who}}, from the rules file!",
           },
         ],
-      }),
-    );
-    const child = spawn(
-      process.execPath,
-      ["--import", "tsx", "src/server.ts", "anthropic"],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          PORT: "0",
-          HOST: "127.0.0.1",
-          LLM_MOCKINGBIRD_RULES: rulesPath,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    const child = spawnRulesServer(rulesPath);
     try {
       const url = await waitForUrl(child);
       const response = await postMessages(url, [
@@ -509,11 +523,7 @@ describe("LLM_MOCKINGBIRD_RULES standalone server (integration)", () => {
         "Hello, world, from the rules file!",
       );
     } finally {
-      child.kill("SIGTERM");
-      await new Promise<void>((resolve) => {
-        child.on("close", () => resolve());
-        setTimeout(resolve, 5_000);
-      });
+      await stopServer(child);
       rmSync(root, { recursive: true, force: true });
     }
   });
@@ -521,23 +531,11 @@ describe("LLM_MOCKINGBIRD_RULES standalone server (integration)", () => {
   it("exits with an error for an invalid rules file", {
     timeout: 30_000,
   }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "llm-mockingbird-rules-bad-"));
-    const rulesPath = join(root, "rules.json");
-    writeFileSync(rulesPath, JSON.stringify([{ when: {}, ratio: 5 }]));
-    const child = spawn(
-      process.execPath,
-      ["--import", "tsx", "src/server.ts", "anthropic"],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          PORT: "0",
-          HOST: "127.0.0.1",
-          LLM_MOCKINGBIRD_RULES: rulesPath,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+    const { root, path: rulesPath } = writeRulesFile(
+      "llm-mockingbird-rules-bad-",
+      [{ when: {}, ratio: 5 }],
     );
+    const child = spawnRulesServer(rulesPath);
     const { stderr } = await new Promise<{ stderr: string }>((resolve) => {
       let output = "";
       child.stderr.on("data", (chunk: Buffer) => {

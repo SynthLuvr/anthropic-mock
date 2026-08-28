@@ -1,6 +1,9 @@
+import type { FastifyRequest } from "fastify";
+
 import { compilePattern, interpolate, type PatternMatcher } from "./patterns";
 import type {
   MockRule,
+  ProviderId,
   RuleEngine,
   RuleGuard,
   RuleOutcome,
@@ -8,32 +11,26 @@ import type {
   RuleWhen,
 } from "./types";
 
-// True when `candidate` is the value, or a list containing it.
+// True when the condition is the actual value, or a list containing it.
 const includesValue = (
-  candidate: string | readonly string[],
-  value: string,
+  condition: string | readonly string[],
+  actual: string,
 ): boolean =>
-  typeof candidate === "string"
-    ? candidate === value
-    : candidate.includes(value);
+  typeof condition === "string"
+    ? condition === actual
+    : condition.includes(actual);
 
-// Header names are case-insensitive: fastify lowercases its request header
-// keys, so lookups compare against the lowercased condition name. Repeated
-// headers arrive as arrays and match when any member equals the value.
+// Header names are case-insensitive: fastify lowercases request header
+// keys, so condition names are lowercased before lookup. Repeated headers
+// arrive as arrays and match when any member equals the value.
 const headersMatch = (
-  headers: Readonly<Record<string, string>> | undefined,
+  condition: Readonly<Record<string, string>>,
   requestHeaders: Readonly<Record<string, unknown>>,
-): boolean => {
-  if (headers === undefined) return true;
-  for (const [name, value] of Object.entries(headers)) {
+): boolean =>
+  Object.entries(condition).every(([name, value]) => {
     const actual = requestHeaders[name.toLowerCase()];
-    const matched = Array.isArray(actual)
-      ? actual.some((entry) => entry === value)
-      : actual === value;
-    if (!matched) return false;
-  }
-  return true;
-};
+    return Array.isArray(actual) ? actual.includes(value) : actual === value;
+  });
 
 const whenMatches = (when: RuleWhen, context: RuleRequestContext): boolean => {
   if (
@@ -43,14 +40,17 @@ const whenMatches = (when: RuleWhen, context: RuleRequestContext): boolean => {
     return false;
   if (when.model !== undefined && !includesValue(when.model, context.model))
     return false;
-  if (!headersMatch(when.headers, context.headers)) return false;
-  if (when.stream !== undefined && when.stream !== context.stream) return false;
-  return true;
+  if (
+    when.headers !== undefined &&
+    !headersMatch(when.headers, context.headers)
+  )
+    return false;
+  return when.stream === undefined || when.stream === context.stream;
 };
 
-// The guard mini-DSL, identical to llm-mock: equals/includes/oneOf compare
-// case-insensitively, matches is a case-sensitive regex test. A missing
-// variable guards against "" (llm-mock coerces undefined the same way).
+// llm-mock's guard mini-DSL: equals/includes/oneOf compare
+// case-insensitively, matches is a case-sensitive regex test. A variable the
+// pattern did not capture is treated as the empty string.
 const guardPasses = (
   guard: RuleGuard,
   vars: Readonly<Record<string, string>>,
@@ -70,14 +70,13 @@ const guardPasses = (
   }
 };
 
-// The reply template for a rule's nth match: a sequence walks its entries
-// and repeats the last one forever; without a sequence, the single reply.
-// A sequence wins over `reply` when both are present.
-const replyTemplate = (rule: MockRule, hits: number): string | undefined => {
-  if (rule.sequence !== undefined && rule.sequence.length > 0)
-    return rule.sequence[Math.min(hits, rule.sequence.length - 1)];
-  return rule.reply;
-};
+// The reply template for a rule's nth match: a sequence repeats its last
+// entry forever; without one, the single `reply`. A sequence wins when both
+// are set.
+const replyTemplate = (rule: MockRule, hits: number): string | undefined =>
+  rule.sequence !== undefined && rule.sequence.length > 0
+    ? rule.sequence[Math.min(hits, rule.sequence.length - 1)]
+    : rule.reply;
 
 type CompiledRule = {
   readonly rule: MockRule;
@@ -85,9 +84,9 @@ type CompiledRule = {
   hits: number;
 };
 
-// Builds the engine that routes requests to rules: the first rule whose
-// when conditions, pattern, guard, and ratio roll succeed wins. Sequence
-// state is per rule and per engine (i.e. per mock instance).
+// Routes a request to the first rule whose when conditions, pattern, guard,
+// and ratio roll succeed. Sequence state is per rule, per engine — that is,
+// per mock instance.
 const createRuleEngine = (
   rules: readonly MockRule[] | undefined,
 ): RuleEngine | undefined => {
@@ -110,8 +109,8 @@ const createRuleEngine = (
         entry.pattern === undefined ? {} : entry.pattern(context.text);
       if (vars === null) continue;
       if (rule.guard !== undefined && !guardPasses(rule.guard, vars)) continue;
-      // The ratio roll happens before the sequence counter advances, so a
-      // skipped request does not consume a sequence step.
+      // The ratio roll precedes the sequence counter, so a skipped request
+      // does not consume a sequence step.
       if (rule.ratio !== undefined && Math.random() >= rule.ratio) continue;
 
       const template = replyTemplate(rule, entry.hits);
@@ -133,22 +132,35 @@ const createRuleEngine = (
   return { match };
 };
 
-// The text rules are matched against: the last user message's content,
-// joining the text parts of array content (both providers use the same
-// role/content message shape). Adapted from llm-mock's
-// extractUserTextFromOpenAI.
+// Matches a completion request against the engine: undefined when no engine
+// is configured or nothing matches.
+const matchRule = (
+  engine: RuleEngine | undefined,
+  provider: ProviderId,
+  request: FastifyRequest,
+  model: string,
+  stream: boolean,
+): RuleOutcome | undefined =>
+  engine?.match({
+    provider,
+    model,
+    text: extractUserText(request.body),
+    headers: request.headers,
+    stream,
+  });
+
+// The text rules match against: the last user message's content, joining
+// the text parts of array content (both providers share the message shape).
 const extractUserText = (body: unknown): string => {
   if (typeof body !== "object" || body === null) return "";
   const messages = (body as { messages?: unknown }).messages;
   if (!Array.isArray(messages)) return "";
-  const lastUser = [...messages]
-    .reverse()
-    .find(
-      (message): message is { content: unknown } =>
-        typeof message === "object" &&
-        message !== null &&
-        (message as { role?: unknown }).role === "user",
-    );
+  const lastUser = messages.findLast(
+    (message): message is { content: unknown } =>
+      typeof message === "object" &&
+      message !== null &&
+      (message as { role?: unknown }).role === "user",
+  );
   if (lastUser === undefined) return "";
   if (typeof lastUser.content === "string") return lastUser.content;
   if (!Array.isArray(lastUser.content)) return "";
@@ -163,4 +175,4 @@ const extractUserText = (body: unknown): string => {
     .join(" ");
 };
 
-export { createRuleEngine, extractUserText };
+export { createRuleEngine, matchRule };

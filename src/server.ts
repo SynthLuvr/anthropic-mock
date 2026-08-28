@@ -37,9 +37,8 @@ const requestLogger = (
     : (request) =>
         appendFileSync(logFile, `${request.method} ${request.url}\n`);
 
-// LLM_MOCKINGBIRD_RULES points at a JSON rules file for the rule engine
-// (ADR 0008). Loaded here rather than lazily so an invalid file fails the
-// server at startup with a clear message.
+// LLM_MOCKINGBIRD_RULES names a JSON rules file (ADR 0008); loading it
+// here fails startup with a clear message on an invalid file.
 const loadRulesFromEnv = (
   rulesPath: string | undefined,
 ): readonly MockRule[] | undefined =>

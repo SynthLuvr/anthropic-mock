@@ -4,11 +4,10 @@ import { resolve } from "node:path";
 import { parseRules } from "./schemas";
 import type { MockRule } from "./types";
 
-// Loads rules from a JSON file for the standalone server —
-// `LLM_MOCKINGBIRD_RULES=path.json`. JSON only: llm-mock also accepts
-// YAML/JS configs, but those would add a dependency and an eval surface
-// this package deliberately avoids (ADR 0008). A bare array or a
-// {"rules": [...]} envelope are both accepted.
+// Loads rules for the standalone server from `LLM_MOCKINGBIRD_RULES`. JSON
+// only: llm-mock also accepts YAML/JS configs, but those would add a
+// dependency and an eval surface this package deliberately avoids (ADR
+// 0008). A bare array or a {"rules": [...]} envelope are both accepted.
 const loadRulesFile = (path: string): readonly MockRule[] => {
   let raw: string;
   try {

@@ -16,14 +16,17 @@ const validPatternPlaceholders = (pattern: string): boolean => {
 
 // A rule must produce something: a reply, a sequence, or any fault outcome
 // (delayMs alone is meaningful — it delays the fallback reply).
-const hasOutcome = (rule: {
-  reply?: string;
-  sequence?: string[];
-  status?: number;
-  malformedJson?: boolean;
-  timeoutAfterMs?: number;
-  delayMs?: number;
-}): boolean =>
+const hasOutcome = (
+  rule: Pick<
+    MockRule,
+    | "reply"
+    | "sequence"
+    | "status"
+    | "malformedJson"
+    | "timeoutAfterMs"
+    | "delayMs"
+  >,
+): boolean =>
   rule.reply !== undefined ||
   (rule.sequence !== undefined && rule.sequence.length > 0) ||
   rule.status !== undefined ||
@@ -67,20 +70,21 @@ const mockRuleSchema = type({
   .onUndeclaredKey("reject")
   .narrow(hasOutcome);
 
-// A rules file is either a bare array or a {"rules": [...]} envelope.
 const rulesEnvelopeSchema = type({ rules: mockRuleSchema.array() });
+
+// Unwraps a {"rules": [...]} envelope; a bare array and anything else are
+// passed through, so invalid shapes reach the array validation, whose error
+// names the actual problem.
+const rulesFromEnvelope = (raw: unknown): unknown => {
+  if (Array.isArray(raw)) return raw;
+  const envelope = rulesEnvelopeSchema(raw);
+  return envelope instanceof type.errors ? raw : envelope.rules;
+};
 
 // Validates raw JSON into rules, throwing a readable error naming the
 // source (the file path, or "rules") when anything is off.
 const parseRules = (raw: unknown, source: string): readonly MockRule[] => {
-  // A non-array input that is not a valid envelope falls through to the
-  // array validation, whose error names the actual shape problem.
-  const envelope = Array.isArray(raw) ? undefined : rulesEnvelopeSchema(raw);
-  const candidate =
-    envelope === undefined || envelope instanceof type.errors
-      ? raw
-      : envelope.rules;
-  const result = mockRuleSchema.array()(candidate);
+  const result = mockRuleSchema.array()(rulesFromEnvelope(raw));
   if (result instanceof type.errors)
     throw new Error(
       `llm-mockingbird: invalid rules in ${source}: ${result.summary}`,
@@ -89,4 +93,4 @@ const parseRules = (raw: unknown, source: string): readonly MockRule[] => {
   return result;
 };
 
-export { mockRuleSchema, parseRules };
+export { parseRules };

@@ -74,18 +74,16 @@ const anthropicErrorBody = (
   status: number,
   errorType?: string,
   errorMessage?: string,
-) => ({
-  type: "error" as const,
-  error: {
-    type: errorType ?? resolveErrorType(status, "anthropic"),
-    message:
-      errorMessage ??
-      resolveErrorMessage(
-        errorType ?? resolveErrorType(status, "anthropic"),
-        "anthropic",
-      ),
-  },
-});
+) => {
+  const type = errorType ?? resolveErrorType(status, "anthropic");
+  return {
+    type: "error" as const,
+    error: {
+      type,
+      message: errorMessage ?? resolveErrorMessage(type, "anthropic"),
+    },
+  };
+};
 
 // OpenAI's error body shape: {"error":{...,"param":null,"code":null}}.
 const openAIErrorBody = (
@@ -114,15 +112,16 @@ const errorBody = (
     ? anthropicErrorBody(status, errorType, errorMessage)
     : openAIErrorBody(status, errorType, errorMessage);
 
-// Applies a matched rule's fault outcome to the reply. Returns true when
-// the outcome fully handled the response (handler must return immediately);
-// false when only delayMs applied (or nothing) and the reply text should be
-// served as normal. Order mirrors llm-mock: the delay first, then the fault.
-const applyRuleFaults = async (
+// Applies a matched rule's faults, the delay first (llm-mock's order).
+// Returns true when a fault fully answered the request and the handler must
+// return immediately; false when the reply should be served as normal — no
+// rule matched, or the outcome set nothing but a delay.
+const applyFaults = async (
   reply: FastifyReply,
   provider: ProviderId,
-  outcome: RuleOutcome,
+  outcome: RuleOutcome | undefined,
 ): Promise<boolean> => {
+  if (outcome === undefined) return false;
   if (outcome.delayMs !== undefined && outcome.delayMs > 0)
     await sleep(outcome.delayMs);
 
@@ -162,8 +161,7 @@ const applyRuleFaults = async (
 
 export {
   anthropicErrorBody,
-  applyRuleFaults,
-  errorBody,
+  applyFaults,
   openAIErrorBody,
   resolveErrorMessage,
   resolveErrorType,

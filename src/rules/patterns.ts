@@ -54,5 +54,5 @@ const compilePattern = (pattern: string): PatternMatcher => {
 const interpolate = (template: string, vars: Readonly<PatternVars>): string =>
   template.replace(PLACEHOLDER, (_match, name: string) => vars[name] ?? "");
 
-export type { PatternMatcher, PatternVars };
+export type { PatternMatcher };
 export { compilePattern, interpolate };

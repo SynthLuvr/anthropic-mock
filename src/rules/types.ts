@@ -1,14 +1,14 @@
 type ProviderId = "anthropic" | "openai";
 
-// The four declarative guard operators, identical to llm-mock's guard
-// mini-DSL, evaluated against the variables captured by `when.pattern`.
+// The four declarative guard operators of llm-mock's mini-DSL, evaluated
+// against the variables captured by `when.pattern`.
 type RuleGuardOp = "equals" | "includes" | "oneOf" | "matches";
 
 type RuleGuard = {
   readonly op: RuleGuardOp;
   // The captured variable name the operator examines.
   readonly var: string;
-  // The operand for equals/includes/matches; a regex source for matches.
+  // The operand for equals/includes/matches (a regex source for matches).
   readonly value?: string;
   // The operand set for oneOf.
   readonly values?: readonly string[];
@@ -18,9 +18,9 @@ type RuleWhen = {
   // A {{var}} template compiled to a case-insensitive, whitespace-tolerant
   // regex anchored to the whole last user message. Omitted matches any text.
   readonly pattern?: string;
-  // Restrict the rule to one provider (or a list), by id.
+  // Restricts the rule to one provider (or a list), by id.
   readonly provider?: string | readonly string[];
-  // Restrict the rule to one model (or a list), exact match.
+  // Restricts the rule to one model (or a list), exact match.
   readonly model?: string | readonly string[];
   // Every entry must equal the request header of the same (case-insensitive)
   // name.
@@ -63,8 +63,8 @@ type MockRule = {
   readonly delayMs?: number;
 };
 
-// Everything a route handler needs to act on a matched rule: the resolved
-// reply (fault-only rules leave it undefined) plus the fault fields.
+// A matched rule's outcome: the resolved reply (undefined for fault-only
+// rules) plus the fault fields.
 type RuleOutcome = {
   readonly reply?: string;
   readonly status?: number;
