@@ -45,7 +45,7 @@ describe("POST /v1/chat/completions, non-streaming (integration)", () => {
     expect(parsed.choices).toHaveLength(1);
     expect(parsed.choices[0]!.message.role).toBe("assistant");
     expect(parsed.choices[0]!.message.content).toContain(
-      "canned response from llm-mock",
+      "canned response from llm-mockingbird",
     );
     expect(parsed.choices[0]!.finish_reason).toBe("stop");
   });

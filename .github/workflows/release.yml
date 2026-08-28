@@ -109,8 +109,8 @@ jobs:
         id: publish
         run: |
           set -o pipefail
-          if npm view "@synthluvr/llm-mock@${NEW_VERSION}" version >/dev/null 2>&1; then
-            echo "::notice::@synthluvr/llm-mock@${NEW_VERSION} is already on npm; skipping publish"
+          if npm view "llm-mockingbird@${NEW_VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::llm-mockingbird@${NEW_VERSION} is already on npm; skipping publish"
           else
             npm publish --provenance 2>&1 | tee /tmp/publish.log
           fi
@@ -122,9 +122,9 @@ jobs:
         if: failure() && steps.publish.outcome == 'failed'
         run: |
           if grep -q 'E404' /tmp/publish.log; then
-            echo "::error title=E404 on PUT::The registry rejected the OIDC trusted-publisher exchange. Fix on npmjs.com -> @synthluvr/llm-mock -> Settings -> Trusted publishing: repository owner 'SynthLuvr', repository 'anthropic-mock', workflow filename 'release.yml', environment left empty, allowed action 'npm publish'. Docs: https://docs.npmjs.com/trusted-publishers"
+            echo "::error title=E404 on PUT::The registry rejected the OIDC trusted-publisher exchange. Fix on npmjs.com -> llm-mockingbird -> Settings -> Trusted publishing: repository owner 'SynthLuvr', repository 'llm-mockingbird', workflow filename 'release.yml', environment left empty, allowed action 'npm publish'. Docs: https://docs.npmjs.com/trusted-publishers"
           elif grep -q 'E422' /tmp/publish.log; then
-            echo "::error title=E422 provenance mismatch::The registry could not verify the provenance bundle. With --provenance, package.json's repository.url must match the provenance repository: https://github.com/SynthLuvr/anthropic-mock. Keep that field in sync with the repo."
+            echo "::error title=E422 provenance mismatch::The registry could not verify the provenance bundle. With --provenance, package.json's repository.url must match the provenance repository: https://github.com/SynthLuvr/llm-mockingbird. Keep that field in sync with the repo."
           fi
 
       # The "main" ruleset (Require a pull request before merging, no bypass
@@ -162,7 +162,7 @@ jobs:
           if [ -z "$pr_url" ]; then
             pr_url="$(gh pr create --base main --head "$branch" \
               --title "chore(release): v${NEW_VERSION}" \
-              --body "Automated version bump for the v${NEW_VERSION} release (@synthluvr/llm-mock@${NEW_VERSION} is on npm).")"
+              --body "Automated version bump for the v${NEW_VERSION} release (llm-mockingbird@${NEW_VERSION} is on npm).")"
           fi
           if [ "$(gh pr view "$pr_url" --json state --jq .state)" = "OPEN" ]; then
             gh pr merge "$pr_url" --squash --delete-branch
@@ -198,7 +198,7 @@ jobs:
           else
             gh release create "v${NEW_VERSION}" \
               --title "v${NEW_VERSION}" \
-              --notes "Published @synthluvr/llm-mock@${NEW_VERSION} to npm: https://www.npmjs.com/package/@synthluvr/llm-mock/v/${NEW_VERSION}"
+              --notes "Published llm-mockingbird@${NEW_VERSION} to npm: https://www.npmjs.com/package/llm-mockingbird/v/${NEW_VERSION}"
           fi
 
   dist-branch:
