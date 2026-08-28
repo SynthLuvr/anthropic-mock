@@ -1,4 +1,4 @@
-# LLM Mock
+# LLM Mockingbird
 
 A mock implementation of the [Anthropic
 API](https://docs.anthropic.com/en/api/getting-started) and the [OpenAI
@@ -90,8 +90,8 @@ directory for the full set.
 pnpm install
 pnpm build           # type-check with tsc
 pnpm test            # run integration tests
-./bin/llm-mock       # Anthropic mock on http://127.0.0.1:8787
-./bin/llm-mock openai  # OpenAI mock on http://127.0.0.1:8788
+./bin/llm-mockingbird         # Anthropic mock on http://127.0.0.1:8787
+./bin/llm-mockingbird openai  # OpenAI mock on http://127.0.0.1:8788
 ```
 
 ## Usage
@@ -103,7 +103,7 @@ with that provider’s routes registered. Use Fastify’s `inject()` to make
 requests without binding a port:
 
 ``` ts
-import { createAnthropicMock, createOpenAIMock } from "llm-mock";
+import { createAnthropicMock, createOpenAIMock } from "llm-mockingbird";
 
 const anthropic = createAnthropicMock();
 
@@ -132,7 +132,7 @@ await openai.close();
 chosen) port and return a `{ url, close }` handle:
 
 ``` ts
-import { startAnthropicMock, startOpenAIMock } from "llm-mock";
+import { startAnthropicMock, startOpenAIMock } from "llm-mockingbird";
 
 const anthropic = await startAnthropicMock();
 console.log(anthropic.url); // http://127.0.0.1:<port>
@@ -143,46 +143,46 @@ console.log(openai.url); // http://127.0.0.1:<port>
 await openai.close();
 ```
 
-For a long-running process, use the `llm-mock` launcher. The provider is
-chosen by CLI argument or the `LLM_MOCK_PROVIDER` environment variable
-(default `anthropic`); `PORT` and `HOST` override the defaults
-(`127.0.0.1:8787` for anthropic, `127.0.0.1:8788` for openai):
+For a long-running process, use the `llm-mockingbird` launcher. The
+provider is chosen by CLI argument or the `LLM_MOCKINGBIRD_PROVIDER`
+environment variable (default `anthropic`); `PORT` and `HOST` override
+the defaults (`127.0.0.1:8787` for anthropic, `127.0.0.1:8788` for
+openai):
 
 ``` bash
-./bin/llm-mock                    # Anthropic on 127.0.0.1:8787
-./bin/llm-mock openai             # OpenAI on 127.0.0.1:8788
-LLM_MOCK_PROVIDER=openai ./bin/llm-mock
-PORT=3000 ./bin/llm-mock openai
-LLM_MOCK_CANNED_RESPONSE='canned reply' ./bin/llm-mock
-LLM_MOCK_LOG=requests.log ./bin/llm-mock
+./bin/llm-mockingbird             # Anthropic on 127.0.0.1:8787
+./bin/llm-mockingbird openai      # OpenAI on 127.0.0.1:8788
+LLM_MOCKINGBIRD_PROVIDER=openai ./bin/llm-mockingbird
+PORT=3000 ./bin/llm-mockingbird openai
+LLM_MOCKINGBIRD_CANNED_RESPONSE='canned reply' ./bin/llm-mockingbird
+LLM_MOCKINGBIRD_LOG=requests.log ./bin/llm-mockingbird
 ```
 
-`LLM_MOCK_CANNED_RESPONSE` overrides the default canned text, and
-`LLM_MOCK_LOG` names a file to append one `METHOD url` line per request
-— handy for asserting, from a test suite, which endpoints a client
-actually called.
+`LLM_MOCKINGBIRD_CANNED_RESPONSE` overrides the default canned text, and
+`LLM_MOCKINGBIRD_LOG` names a file to append one `METHOD url` line per
+request — handy for asserting, from a test suite, which endpoints a
+client actually called.
 
 ### Consuming as a dependency
 
 The package’s `exports` map points straight at the TypeScript source
 (`src/create-mock.ts`), so a consumer needs TypeScript-aware tooling
 (`tsx`, `vitest`, …) to import it. It is published to npm as
-`@synthluvr/llm-mock` (the unscoped `llm-mock` name is already taken by
-an unrelated package):
+`llm-mockingbird`:
 
 ``` bash
-pnpm add -D @synthluvr/llm-mock
+pnpm add -D llm-mockingbird
 ```
 
 To develop against a local checkout, install it as a link from a sibling
 directory instead:
 
 ``` bash
-pnpm add -D @synthluvr/llm-mock@link:../anthropic-mock
+pnpm add -D llm-mockingbird@link:../llm-mockingbird
 ```
 
-The `llm-mock` bin is exposed alongside, so the standalone server can be
-spawned from `node_modules/.bin/llm-mock` as well.
+The `llm-mockingbird` bin is exposed alongside, so the standalone server
+can be spawned from `node_modules/.bin/llm-mockingbird` as well.
 
 ### Pointing a client at the mock
 
@@ -241,7 +241,7 @@ defaults differ per provider, both are listed.
 | `streamSseErrorAfterMs` | `number` | — | When set, stream deltas this long, then emit a structured SSE error frame and end the stream (OpenAI non-streaming: HTTP `500` error body) |
 | `streamSseErrorType` | `string` | Anthropic: `overloaded_error`; OpenAI: `server_error` | The error type inside the mid-stream SSE error frame |
 | `streamSseErrorMessage` | `string` | Anthropic: `Overloaded`; OpenAI: `The server had an error…` | The error message inside the mid-stream SSE error frame |
-| `onRequest` | `(request: { method, url }) => void` | — | Observes each request just before its handler runs; the standalone server wires this to `LLM_MOCK_LOG` |
+| `onRequest` | `(request: { method, url }) => void` | — | Observes each request just before its handler runs; the standalone server wires this to `LLM_MOCKINGBIRD_LOG` |
 
 ### `RunningMock`
 
@@ -317,13 +317,13 @@ With `"stream": true` it replies with a canned SSE stream of
 `chat.completion.chunk` frames — `data:` lines only, no `event:` names —
 terminated by `data: [DONE]`:
 
-    data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mock_0000","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
+    data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mockingbird_0000","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
 
-    data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mock_0000","choices":[{"index":0,"delta":{"content":"Hi! This is "},"logprobs":null,"finish_reason":null}]}
+    data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mockingbird_0000","choices":[{"index":0,"delta":{"content":"Hi! This is "},"logprobs":null,"finish_reason":null}]}
 
     ... one chunk per text chunk ...
 
-    data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mock_0000","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}
+    data: {"id":"chatcmpl-mock-0001","object":"chat.completion.chunk","created":1735689600,"model":"gpt-4o","system_fingerprint":"fp_llm_mockingbird_0000","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}
 
     data: [DONE]
 
@@ -336,11 +336,11 @@ Without `stream` (the OpenAI default) it returns a single
   "object": "chat.completion",
   "created": 1735689600,
   "model": "gpt-4o",
-  "system_fingerprint": "fp_llm_mock_0000",
+  "system_fingerprint": "fp_llm_mockingbird_0000",
   "choices": [
     {
       "index": 0,
-      "message": { "role": "assistant", "content": "Hi! This is a canned response from llm-mock." },
+      "message": { "role": "assistant", "content": "Hi! This is a canned response from llm-mockingbird." },
       "logprobs": null,
       "finish_reason": "stop"
     }

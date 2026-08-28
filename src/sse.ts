@@ -7,7 +7,7 @@ import type { FastifyReply } from "fastify";
 
 import type { MockOptions } from "./types";
 
-const DEFAULT_RESPONSE = "Hi! This is a canned response from llm-mock.";
+const DEFAULT_RESPONSE = "Hi! This is a canned response from llm-mockingbird.";
 
 // Anthropic frames name their event (`event:` + `data:` lines); OpenAI
 // frames carry `data:` lines only, so one serializer serves both wire

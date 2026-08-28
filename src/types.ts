@@ -14,7 +14,7 @@ type MockOptions = {
   readonly streamChunkSize?: number;
   readonly streamChunkDelayMs?: number;
   // Observes each request just before its route handler runs; the
-  // standalone server wires this to LLM_MOCK_LOG.
+  // standalone server wires this to LLM_MOCKINGBIRD_LOG.
   readonly onRequest?: (request: MockRequest) => void;
   // When set, streams deltas for this many milliseconds then tears the
   // socket down mid-flight (no closing frames) — a mid-stream 500-class

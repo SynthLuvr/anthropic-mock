@@ -17,7 +17,7 @@ const DEFAULT_COMPLETION_ID = "chatcmpl-mock-0001";
 // Fixed epoch and fingerprint keep every response byte-for-byte
 // deterministic, which the tests assert.
 const DEFAULT_CREATED = 1735689600;
-const DEFAULT_FINGERPRINT = "fp_llm_mock_0000";
+const DEFAULT_FINGERPRINT = "fp_llm_mockingbird_0000";
 const DEFAULT_INPUT_TOKENS = 10;
 const DEFAULT_OUTPUT_TOKENS = 1;
 // Token-fragment-sized chunks mirror how the real API streams.

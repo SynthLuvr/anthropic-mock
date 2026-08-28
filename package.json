@@ -1,9 +1,10 @@
 {
-  "name": "@synthluvr/llm-mock",
+  "name": "llm-mockingbird",
   "version": "0.1.0",
   "description": "Mock LLM provider APIs (Anthropic and OpenAI) for testing purposes",
   "keywords": [
     "mock",
+    "mockingbird",
     "llm",
     "anthropic",
     "openai",
@@ -16,12 +17,12 @@
   "author": "SynthLuvr (https://github.com/SynthLuvr)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SynthLuvr/anthropic-mock.git"
+    "url": "git+https://github.com/SynthLuvr/llm-mockingbird.git"
   },
   "bugs": {
-    "url": "https://github.com/SynthLuvr/anthropic-mock/issues"
+    "url": "https://github.com/SynthLuvr/llm-mockingbird/issues"
   },
-  "homepage": "https://github.com/SynthLuvr/anthropic-mock#readme",
+  "homepage": "https://github.com/SynthLuvr/llm-mockingbird#readme",
   "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@11.15.0",
@@ -29,7 +30,7 @@
     "node": "==26"
   },
   "bin": {
-    "llm-mock": "./bin/llm-mock"
+    "llm-mockingbird": "./bin/llm-mockingbird"
   },
   "main": "./src/create-mock.ts",
   "exports": {

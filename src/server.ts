@@ -10,22 +10,22 @@ const DEFAULT_HOST = "127.0.0.1";
 
 type Provider = "anthropic" | "openai";
 
-// The provider is selected by CLI argument (`llm-mock openai`) or the
-// LLM_MOCK_PROVIDER environment variable, defaulting to anthropic.
+// The provider is selected by CLI argument (`llm-mockingbird openai`) or the
+// LLM_MOCKINGBIRD_PROVIDER environment variable, defaulting to anthropic.
 const resolveProvider = (arg: string | undefined): Provider => {
   const raw = (
     arg ??
-    process.env.LLM_MOCK_PROVIDER ??
+    process.env.LLM_MOCKINGBIRD_PROVIDER ??
     "anthropic"
   ).toLowerCase();
   if (raw === "anthropic" || raw === "openai") return raw;
   console.error(
-    `llm-mock: unknown provider "${raw}" (expected "anthropic" or "openai")`,
+    `llm-mockingbird: unknown provider "${raw}" (expected "anthropic" or "openai")`,
   );
   process.exit(2);
 };
 
-// LLM_MOCK_LOG appends one "METHOD url" line per request, so a test suite
+// LLM_MOCKINGBIRD_LOG appends one "METHOD url" line per request, so a test suite
 // can assert which endpoints a client actually called.
 const requestLogger = (
   logFile: string | undefined,
@@ -45,12 +45,12 @@ const run = async (): Promise<void> => {
   const options: MockOptions = {
     port,
     host: process.env.HOST ?? DEFAULT_HOST,
-    cannedResponse: process.env.LLM_MOCK_CANNED_RESPONSE,
-    onRequest: requestLogger(process.env.LLM_MOCK_LOG),
+    cannedResponse: process.env.LLM_MOCKINGBIRD_CANNED_RESPONSE,
+    onRequest: requestLogger(process.env.LLM_MOCKINGBIRD_LOG),
   };
   const start = provider === "openai" ? startOpenAIMock : startAnthropicMock;
   const mock = await start(options);
-  console.log(`llm-mock (${provider}) listening on ${mock.url}`);
+  console.log(`llm-mockingbird (${provider}) listening on ${mock.url}`);
 };
 
 void run().catch((error: unknown) => {

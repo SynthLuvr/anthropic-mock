@@ -44,10 +44,10 @@ const waitForUrl = async (child: MockChild): Promise<string> => {
     const match = output.match(/listening on (http:\/\/\S+)/);
     if (match) return match[1];
     if (child.exitCode !== null)
-      throw new Error(`llm-mock exited early: ${output.trim()}`);
+      throw new Error(`llm-mockingbird exited early: ${output.trim()}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`llm-mock did not start: ${output.trim()}`);
+  throw new Error(`llm-mockingbird did not start: ${output.trim()}`);
 };
 
 const stopChild = async (child: MockChild): Promise<void> => {
@@ -104,10 +104,10 @@ describe("onRequest option (integration)", () => {
 });
 
 describe("standalone server env options (integration)", () => {
-  it("logs requests to LLM_MOCK_LOG and serves LLM_MOCK_CANNED_RESPONSE", {
+  it("logs requests to LLM_MOCKINGBIRD_LOG and serves LLM_MOCKINGBIRD_CANNED_RESPONSE", {
     timeout: 30_000,
   }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "llm-mock-log-"));
+    const root = mkdtempSync(join(tmpdir(), "llm-mockingbird-log-"));
     const logFile = join(root, "requests.log");
     const child = spawn(
       process.execPath,
@@ -118,8 +118,8 @@ describe("standalone server env options (integration)", () => {
           ...process.env,
           PORT: "0",
           HOST: "127.0.0.1",
-          LLM_MOCK_CANNED_RESPONSE: CANNED,
-          LLM_MOCK_LOG: logFile,
+          LLM_MOCKINGBIRD_CANNED_RESPONSE: CANNED,
+          LLM_MOCKINGBIRD_LOG: logFile,
         },
         stdio: ["ignore", "pipe", "pipe"],
       },

@@ -130,7 +130,7 @@ const trackMessagesRequests = (app: FastifyInstance): RequestCounts => {
         type: "error",
         error: {
           type: "invalid_request_error",
-          message: "llm-mock loop breaker",
+          message: "llm-mockingbird loop breaker",
         },
       });
   });

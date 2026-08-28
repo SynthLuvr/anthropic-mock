@@ -1,10 +1,10 @@
 # ADR 0006: Publish to npm via OIDC trusted publishing
 
-| Field  | Value                                  |
-|--------|----------------------------------------|
-| Status | Accepted                               |
-| Date   | 2026-08-28                             |
-| Tags   | release, ci, npm, publishing, security |
+| Field | Value |
+|----|----|
+| Status | Accepted (naming superseded by [ADR 0007](0007-rename-llm-mockingbird.md)) |
+| Date | 2026-08-28 |
+| Tags | release, ci, npm, publishing, security |
 
 ## Context
 
