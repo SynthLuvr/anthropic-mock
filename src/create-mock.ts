@@ -4,6 +4,15 @@ import { registerAnthropicMessagesRoute } from "./anthropic/messages";
 import { registerAnthropicModelsRoute } from "./anthropic/models";
 import { registerOpenAIChatCompletionsRoute } from "./openai/chat-completions";
 import { registerOpenAIModelsRoute } from "./openai/models";
+import { createRuleEngine } from "./rules/engine";
+import type {
+  MockRule,
+  RuleGuard,
+  RuleGuardOp,
+  RuleOutcome,
+  RuleRequestContext,
+  RuleWhen,
+} from "./rules/types";
 import { parsePort } from "./schemas";
 import type { MockOptions, MockRequest, RunningMock } from "./types";
 
@@ -29,7 +38,7 @@ const registerRequestObserver = (
 const createAnthropicMock = (options: MockOptions = {}): FastifyInstance => {
   const app = Fastify({ logger: false });
   registerRequestObserver(app, options.onRequest);
-  registerAnthropicMessagesRoute(app, options);
+  registerAnthropicMessagesRoute(app, options, createRuleEngine(options.rules));
   registerAnthropicModelsRoute(app, options);
   return app;
 };
@@ -37,7 +46,11 @@ const createAnthropicMock = (options: MockOptions = {}): FastifyInstance => {
 const createOpenAIMock = (options: MockOptions = {}): FastifyInstance => {
   const app = Fastify({ logger: false });
   registerRequestObserver(app, options.onRequest);
-  registerOpenAIChatCompletionsRoute(app, options);
+  registerOpenAIChatCompletionsRoute(
+    app,
+    options,
+    createRuleEngine(options.rules),
+  );
   registerOpenAIModelsRoute(app, options);
   return app;
 };
@@ -64,7 +77,17 @@ const startOpenAIMock = async (
   options: MockOptions = {},
 ): Promise<RunningMock> => listen(createOpenAIMock(options), options);
 
-export type { MockOptions, MockRequest, RunningMock };
+export type {
+  MockOptions,
+  MockRequest,
+  MockRule,
+  RuleGuard,
+  RuleGuardOp,
+  RuleOutcome,
+  RuleRequestContext,
+  RuleWhen,
+  RunningMock,
+};
 export {
   createAnthropicMock,
   createOpenAIMock,

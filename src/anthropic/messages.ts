@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
-
+import { extractUserText } from "../rules/engine";
+import { applyRuleFaults } from "../rules/faults";
+import type { RuleEngine } from "../rules/types";
 import {
   resolveCannedResponse,
   resolveErrorMode,
@@ -113,20 +115,36 @@ const openingEvents = (
 const registerAnthropicMessagesRoute = (
   app: FastifyInstance,
   options: MockOptions,
+  engine: RuleEngine | undefined,
 ): void => {
-  const chunks = splitText(
-    resolveCannedResponse(options),
-    options.streamChunkSize ?? DEFAULT_CHUNK_SIZE,
-  );
+  const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
   const inputTokens = options.inputTokens ?? DEFAULT_INPUT_TOKENS;
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
+  const fallbackChunks = splitText(resolveCannedResponse(options), chunkSize);
 
   app.post("/v1/messages", async (request, reply) => {
-    const model = resolveModel(
-      parseAnthropicRequest(request.body),
-      DEFAULT_MODEL,
-    );
+    const body = parseAnthropicRequest(request.body);
+    const model = resolveModel(body, DEFAULT_MODEL);
+    const outcome = engine?.match({
+      provider: "anthropic",
+      model,
+      text: extractUserText(request.body),
+      headers: request.headers,
+      stream: body.stream === true,
+    });
+    if (
+      outcome !== undefined &&
+      (await applyRuleFaults(reply, "anthropic", outcome))
+    )
+      return;
+
+    // A matched rule's reply replaces the canned chunks; fault-only rules
+    // leave reply undefined and fall back to the canned chunks.
+    const chunks =
+      outcome?.reply === undefined
+        ? fallbackChunks
+        : splitText(outcome.reply, chunkSize);
     await streamReply(reply, {
       events: buildMessageEvents(model, chunks, inputTokens, outputTokens),
       opening: openingEvents(model, inputTokens),

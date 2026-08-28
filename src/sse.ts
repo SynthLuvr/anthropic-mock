@@ -66,6 +66,9 @@ const splitText = (text: string, size: number): readonly string[] => {
 };
 
 const resolveCannedResponse = (options: MockOptions): string => {
+  // The rules' fallback (llm-mock's defaults.fallback) outranks the canned
+  // response; the canned text stays the ultimate default (ADR 0008).
+  if (options.fallbackResponse !== undefined) return options.fallbackResponse;
   if (options.cannedResponseFile)
     return readFileSync(resolve(options.cannedResponseFile), "utf8");
   return options.cannedResponse ?? DEFAULT_RESPONSE;

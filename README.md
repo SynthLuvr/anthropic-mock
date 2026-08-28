@@ -30,7 +30,9 @@ they cannot share one app (see
 Responses are **canned** (fixed), which keeps the mocks fast,
 deterministic, and dependency-free. Canned text can be supplied inline
 or loaded from a markdown file (see `src/responses/` for example
-fixtures).
+fixtures). For config-driven replies and faults, the [rule
+engine](#rule-engine) routes requests past the canned text
+declaratively.
 
 ## Features
 
@@ -64,6 +66,13 @@ fixtures).
     requests the configured error is returned as an HTTP `500` JSON
     error body after the same delay.
 - **`GET /v1/models`** in each provider’s native shape
+- **Rule engine** (adapted from npm
+  [`llm-mock`](https://www.npmjs.com/package/llm-mock), ADR 0008) —
+  route requests by prompt pattern (`{{var}}` capture), provider, model,
+  headers, and stream flag; guard on captured variables; step through
+  reply sequences; and inject faults (`status` errors with
+  provider-shaped bodies and `retry-after`, malformed JSON, bounded
+  timeouts, fixed delays) — all declaratively, per rule
 - **In-process** testing via Fastify’s `inject()` (no port needed)
 - **Standalone** server mode for end-to-end runs and for pointing a real
   client at `ANTHROPIC_HOST` / `OPENAI_HOST`
@@ -155,13 +164,15 @@ openai):
 LLM_MOCKINGBIRD_PROVIDER=openai ./bin/llm-mockingbird
 PORT=3000 ./bin/llm-mockingbird openai
 LLM_MOCKINGBIRD_CANNED_RESPONSE='canned reply' ./bin/llm-mockingbird
+LLM_MOCKINGBIRD_RULES=./rules.json ./bin/llm-mockingbird
 LLM_MOCKINGBIRD_LOG=requests.log ./bin/llm-mockingbird
 ```
 
-`LLM_MOCKINGBIRD_CANNED_RESPONSE` overrides the default canned text, and
-`LLM_MOCKINGBIRD_LOG` names a file to append one `METHOD url` line per
-request — handy for asserting, from a test suite, which endpoints a
-client actually called.
+`LLM_MOCKINGBIRD_CANNED_RESPONSE` overrides the default canned text,
+`LLM_MOCKINGBIRD_RULES` loads the rule engine from a JSON file (see
+[Rule engine](#rule-engine)), and `LLM_MOCKINGBIRD_LOG` names a file to
+append one `METHOD url` line per request — handy for asserting, from a
+test suite, which endpoints a client actually called.
 
 ### Consuming as a dependency
 
@@ -241,6 +252,8 @@ defaults differ per provider, both are listed.
 | `streamSseErrorAfterMs` | `number` | — | When set, stream deltas this long, then emit a structured SSE error frame and end the stream (OpenAI non-streaming: HTTP `500` error body) |
 | `streamSseErrorType` | `string` | Anthropic: `overloaded_error`; OpenAI: `server_error` | The error type inside the mid-stream SSE error frame |
 | `streamSseErrorMessage` | `string` | Anthropic: `Overloaded`; OpenAI: `The server had an error…` | The error message inside the mid-stream SSE error frame |
+| `rules` | `readonly MockRule[]` | — | Config-driven replies and faults (see [Rule engine](#rule-engine)); first matching rule wins |
+| `fallbackResponse` | `string` | — | Reply for requests no rule matches — llm-mock’s `defaults.fallback`; outranks the canned response, which stays the ultimate default |
 | `onRequest` | `(request: { method, url }) => void` | — | Observes each request just before its handler runs; the standalone server wires this to `LLM_MOCKINGBIRD_LOG` |
 
 ### `RunningMock`
@@ -249,6 +262,89 @@ defaults differ per provider, both are listed.
 |---------|-----------------------|-----------------------------------|
 | `url`   | `string`              | Base URL of the running mock      |
 | `close` | `() => Promise<void>` | Stop the server and free the port |
+
+## Rule engine
+
+`MockOptions.rules` routes completion requests (`POST /v1/messages`,
+`POST /v1/chat/completions`) through declarative rules — adapted from
+npm `llm-mock` to Fastify/TypeScript/arktype with no new dependencies
+(ADR 0008). The first rule whose conditions match supplies the reply (or
+the fault); requests no rule matches get `fallbackResponse`, else the
+canned response. `GET /v1/models` is never rule-routed.
+
+``` ts
+import { createOpenAIMock } from "llm-mockingbird";
+
+const openai = createOpenAIMock({
+  fallbackResponse: "Sorry, I don't have a mock for that yet.",
+  rules: [
+    {
+      // Case-insensitive, whitespace-tolerant match against the last user
+      // message; {{env}} is captured.
+      when: { pattern: "deploy to {{env}}" },
+      // Declares the same four guard operators as llm-mock.
+      guard: { op: "oneOf", var: "env", values: ["prod", "staging"] },
+      reply: "Careful! Deploying to {{env}}",
+    },
+    { when: { model: "gpt-4.1" }, sequence: ["first", "second", "steady"] },
+    { when: { headers: { "X-Canary": "on" } }, ratio: 0.5, status: 429, retryAfterSec: 3 },
+    { when: {}, malformedJson: true },
+  ],
+});
+```
+
+### Rule fields
+
+| Field | Type | Description |
+|----|----|----|
+| `when.pattern` | `string` | `{{var}}` template compiled to a case-insensitive, whitespace-tolerant regex anchored to the whole last user message; captures variables for `reply`/`guard`. Omitted matches any text |
+| `when.provider` | `string \| readonly string[]` | Restrict to `"anthropic"` / `"openai"` |
+| `when.model` | `string \| readonly string[]` | Restrict to a model id (exact match) |
+| `when.headers` | `Record<string, string>` | Every entry must equal the request header of the same (case-insensitive) name |
+| `when.stream` | `boolean` | Match only requests whose `stream` flag equals this |
+| `guard` | `{ op, var, value?, values? }` | `equals`/`includes`/`oneOf` compare case-insensitively; `matches` is a case-sensitive regex test. A failing guard falls through to later rules |
+| `reply` | `string` | The reply text, always `{{var}}`-interpolated |
+| `sequence` | `readonly string[]` | Ordered replies across successive matching requests; the last entry repeats. Wins over `reply` when both are set |
+| `ratio` | `number` | Probability in \[0, 1\] that an otherwise-matching rule fires; a failed roll falls through without consuming a sequence step |
+| `status` | `number` | Any HTTP status, answered with a provider-shaped error body (Anthropic `{"type":"error",…}`, OpenAI `{"error":{…}}`); the error type is mapped from the status |
+| `retryAfterSec` | `number` | Sent as `retry-after` alongside `status` |
+| `errorType` / `errorMessage` | `string` | Override the mapped error type / default message |
+| `malformedJson` | `boolean` | `200` with the truncated body `{"not":"closed"` — valid headers, unparsable payload |
+| `timeoutAfterMs` | `number` | Hangs boundedly for this many milliseconds, then destroys the socket (llm-mock’s `TIMEOUT`, adapted so tests terminate) |
+| `delayMs` | `number` | Fixed delay before the response — fault or reply |
+
+A matched rule’s reply replaces the canned text: streamed requests carry
+it across the usual delta frames, OpenAI non-streaming requests return
+it as the `chat.completion` content. Fault outcomes (`status`,
+`malformedJson`, `timeoutAfterMs`) answer before any stream starts. A
+rule with neither `reply` nor `sequence` and no fault is invalid; a
+`delayMs`-only rule delays the fallback reply.
+
+### Rules from a file (standalone server)
+
+The standalone server loads rules from a JSON file — either a bare array
+or a `{"rules": [...]}` envelope — named by `LLM_MOCKINGBIRD_RULES`:
+
+``` bash
+LLM_MOCKINGBIRD_RULES=./rules.json ./bin/llm-mockingbird anthropic
+```
+
+``` json
+{
+  "rules": [
+    {
+      "when": { "pattern": "hello {{who}}" },
+      "reply": "Hello, {{who}}, from the rules file!"
+    },
+    { "when": { "stream": true }, "status": 529 }
+  ]
+}
+```
+
+JSON only (no YAML/JS config, ADR 0008). The file is validated at
+startup with arktype — unknown fields, bad placeholder names, and rules
+without any outcome are rejected with an error naming the file. Library
+users pass rules inline, where TypeScript checks them.
 
 ## Endpoints
 
