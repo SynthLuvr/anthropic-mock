@@ -1,8 +1,29 @@
 {
-  "name": "llm-mock",
-  "private": true,
+  "name": "@synthluvr/llm-mock",
+  "version": "0.1.0",
   "description": "Mock LLM provider APIs (Anthropic and OpenAI) for testing purposes",
+  "keywords": [
+    "mock",
+    "llm",
+    "anthropic",
+    "openai",
+    "claude",
+    "testing",
+    "test-double",
+    "fastify",
+    "sse"
+  ],
+  "author": "SynthLuvr (https://github.com/SynthLuvr)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SynthLuvr/anthropic-mock.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SynthLuvr/anthropic-mock/issues"
+  },
+  "homepage": "https://github.com/SynthLuvr/anthropic-mock#readme",
   "type": "module",
+  "license": "MIT",
   "packageManager": "pnpm@11.15.0",
   "engines": {
     "node": "==26"
@@ -13,6 +34,10 @@
   "main": "./src/create-mock.ts",
   "exports": {
     ".": "./src/create-mock.ts"
+  },
+  "files": ["bin", "src", "!src/tests"],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",
@@ -33,6 +58,11 @@
     "format:md": "tsx scripts/pandoc-md.mts --write",
     "test": "vitest run"
   },
+  "dependencies": {
+    "arktype": "^2.2.3",
+    "fastify": "5.11.0",
+    "tsx": "^4.23.1"
+  },
   "devDependencies": {
     "@ast-grep/cli": "^0.44.1",
     "@ast-grep/cli-linux-x64-gnu": "^0.44.1",
@@ -44,12 +74,7 @@
     "npm-run-all2": "^9.0.2",
     "oxlint": "^1.74.0",
     "oxlint-tsgolint": "^7.0.2001",
-    "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
-  },
-  "dependencies": {
-    "arktype": "^2.2.3",
-    "fastify": "5.11.0"
   }
 }

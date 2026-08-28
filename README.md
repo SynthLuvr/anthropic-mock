@@ -166,11 +166,19 @@ actually called.
 
 The package’s `exports` map points straight at the TypeScript source
 (`src/create-mock.ts`), so a consumer needs TypeScript-aware tooling
-(`tsx`, `vitest`, …) to import it. Install it as a local link, for
-example from a sibling checkout:
+(`tsx`, `vitest`, …) to import it. It is published to npm as
+`@synthluvr/llm-mock` (the unscoped `llm-mock` name is already taken by
+an unrelated package):
 
 ``` bash
-pnpm add -D llm-mock@link:../anthropic-mock
+pnpm add -D @synthluvr/llm-mock
+```
+
+To develop against a local checkout, install it as a link from a sibling
+directory instead:
+
+``` bash
+pnpm add -D @synthluvr/llm-mock@link:../anthropic-mock
 ```
 
 The `llm-mock` bin is exposed alongside, so the standalone server can be
