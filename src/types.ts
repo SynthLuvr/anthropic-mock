@@ -1,3 +1,5 @@
+import type { MockRule } from "./rules/types";
+
 type MockRequest = {
   readonly method: string;
   readonly url: string;
@@ -32,6 +34,13 @@ type MockOptions = {
   // default: "Overloaded"; OpenAI default: "The server had an error while
   // processing your request. Sorry about that!".
   readonly streamSseErrorMessage?: string;
+  // Config-driven behavior (ADR 0008): the first rule matching a completion
+  // request supplies its reply or fault, replacing the canned response.
+  readonly rules?: readonly MockRule[];
+  // The reply for requests no rule matches — llm-mock's defaults.fallback.
+  // Takes precedence over the canned response; the canned text stays the
+  // ultimate default when this is unset.
+  readonly fallbackResponse?: string;
 };
 
 type RunningMock = {

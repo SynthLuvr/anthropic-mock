@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
-
+import { matchRule } from "../rules/engine";
+import { applyFaults } from "../rules/faults";
+import type { RuleEngine } from "../rules/types";
 import {
-  resolveCannedResponse,
   resolveErrorMode,
+  resolveFallbackText,
   resolveModel,
   type SseEvent,
   sleep,
@@ -112,9 +114,10 @@ const chatCompletionBody = (
 const registerOpenAIChatCompletionsRoute = (
   app: FastifyInstance,
   options: MockOptions,
+  engine: RuleEngine | undefined,
 ): void => {
-  const text = resolveCannedResponse(options);
-  const chunks = splitText(text, options.streamChunkSize ?? DEFAULT_CHUNK_SIZE);
+  const fallbackText = resolveFallbackText(options);
+  const chunkSize = options.streamChunkSize ?? DEFAULT_CHUNK_SIZE;
   const inputTokens = options.inputTokens ?? DEFAULT_INPUT_TOKENS;
   const outputTokens = options.outputTokens ?? DEFAULT_OUTPUT_TOKENS;
   const chunkDelayMs = options.streamChunkDelayMs ?? DEFAULT_CHUNK_DELAY_MS;
@@ -132,6 +135,19 @@ const registerOpenAIChatCompletionsRoute = (
       model: resolveModel(body, DEFAULT_MODEL),
       fingerprint: DEFAULT_FINGERPRINT,
     };
+    const outcome = matchRule(
+      engine,
+      "openai",
+      request,
+      meta.model,
+      body.stream === true,
+    );
+    if (await applyFaults(reply, "openai", outcome)) return;
+
+    // A matched rule's reply replaces the canned text; fault-only rules
+    // fall back to it.
+    const text = outcome?.reply ?? fallbackText;
+    const chunks = splitText(text, chunkSize);
 
     if (body.stream) {
       await streamReply(reply, {

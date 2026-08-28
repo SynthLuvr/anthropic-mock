@@ -1,6 +1,8 @@
 import { appendFileSync } from "node:fs";
 
 import { startAnthropicMock, startOpenAIMock } from "./create-mock";
+import { loadRulesFile } from "./rules/loadRules";
+import type { MockRule } from "./rules/types";
 import type { MockOptions } from "./types";
 
 // Distinct defaults so both providers can run side by side.
@@ -35,6 +37,13 @@ const requestLogger = (
     : (request) =>
         appendFileSync(logFile, `${request.method} ${request.url}\n`);
 
+// LLM_MOCKINGBIRD_RULES names a JSON rules file (ADR 0008); loading it
+// here fails startup with a clear message on an invalid file.
+const loadRulesFromEnv = (
+  rulesPath: string | undefined,
+): readonly MockRule[] | undefined =>
+  rulesPath === undefined ? undefined : loadRulesFile(rulesPath);
+
 const run = async (): Promise<void> => {
   const provider = resolveProvider(process.argv[2]);
   const defaultPort =
@@ -46,6 +55,7 @@ const run = async (): Promise<void> => {
     port,
     host: process.env.HOST ?? DEFAULT_HOST,
     cannedResponse: process.env.LLM_MOCKINGBIRD_CANNED_RESPONSE,
+    rules: loadRulesFromEnv(process.env.LLM_MOCKINGBIRD_RULES),
     onRequest: requestLogger(process.env.LLM_MOCKINGBIRD_LOG),
   };
   const start = provider === "openai" ? startOpenAIMock : startAnthropicMock;
