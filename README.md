@@ -100,7 +100,7 @@ The lint/format toolchain lives in
 that bundles biome, oxlint (+ tsgolint), the ast-grep rules,
 convert-to-arrow, jscpd, and the pandoc/peer-deps/audit helpers, and
 ships the canonical biome, tsconfig, and vitest presets this repo
-extends (see ADR 0009).
+extends.
 
 ## Quick Start
 
