@@ -88,10 +88,19 @@ directory for the full set.
 ## Prerequisites
 
 - [Node.js](https://nodejs.org) 26 and [pnpm](https://pnpm.io) (enforced
-  via `engines`)
-- [pandoc](https://pandoc.org) 3.10.2 — required by `pnpm lint:md` /
-  `pnpm format:md` (CI pins this exact version for consistent GFM
-  output)
+  via `engines`; `.node-version` pins the major for fnm/nvm/asdf)
+- [pandoc](https://pandoc.org) 3.10.2 — required by the Markdown
+  lint/format steps (CI pins this exact version for consistent GFM
+  output); `pnpm exec ts-canon doctor` verifies it
+- `bash` on `PATH` — pnpm runs scripts through it (Git for Windows
+  provides it)
+
+The lint/format toolchain lives in
+[ts-canon](https://github.com/SynthLuvr/ts-canon): one devDependency
+that bundles biome, oxlint (+ tsgolint), the ast-grep rules,
+convert-to-arrow, jscpd, and the pandoc/peer-deps/audit helpers, and
+ships the canonical biome, tsconfig, and vitest presets this repo
+extends.
 
 ## Quick Start
 
@@ -493,37 +502,44 @@ OpenAI:
 
 ### Lint
 
-The `lint` script runs all linters in sequence via `npm-run-all`:
+`pnpm lint` runs `ts-canon lint`, which runs every check in order and
+fails fast on the first non-zero step:
 
-| Script                   | Description                               |
-|--------------------------|-------------------------------------------|
-| `pnpm lint`              | Run all lint steps                        |
-| `pnpm lint:biome`        | Biome check: format + lint + import order |
-| `pnpm lint:oxlint`       | oxlint with type-aware rules              |
-| `pnpm lint:exports`      | ast-grep: no inline exports               |
-| `pnpm lint:functions`    | ast-grep: no function declarations        |
-| `pnpm lint:file-comment` | ast-grep: no leading file comments        |
-| `pnpm lint:md`           | pandoc: Markdown must be GFM-formatted    |
-| `pnpm lint:peer-deps`    | pnpm: no peer dependency conflicts        |
+1.  Biome check (format + lint + import order)
+2.  oxlint with type-aware rules (tsgolint), warnings denied
+3.  ast-grep: no inline exports, no function declarations, no leading
+    file comments
+4.  pandoc: markdown must be GFM-formatted
+5.  `pnpm peers check` (skipped without a lockfile)
+6.  `pnpm audit --prod` (skipped with `--fast`)
+7.  jscpd: code duplication, 5% threshold (skipped with `--fast`)
+
+Both `lint` and `format` accept path arguments, e.g.
+`pnpm lint -- src/rules`, and `--fast` skips the slow audit/jscpd steps.
 
 ### Format
 
-The `format` script runs all formatters in sequence:
+`pnpm format` runs `ts-canon format`, which runs every formatter in
+order (each step’s output is the next step’s input):
 
-| Script | Description |
-|----|----|
-| `pnpm format` | Run all format steps |
-| `pnpm format:arrows` | `convert-to-arrow` — rewrite `function` to arrow consts |
-| `pnpm format:braces` | ast-grep strip single-statement braces |
-| `pnpm format:biome` | Biome format with auto-fix |
-| `pnpm format:check` | Biome check (lint + format auto-fix) |
-| `pnpm format:md` | pandoc: reformat Markdown to canonical GFM |
+1.  `convert-to-arrow` — rewrite `function` declarations to arrow consts
+2.  strip single-statement braces (ast-grep)
+3.  Biome format
+4.  Biome check (lint + format auto-fix)
+5.  pandoc — reformat markdown to canonical GFM
+
+### Doctor
+
+`pnpm exec ts-canon doctor` verifies the environment: pandoc (≥ 3.10),
+node (≥ 24), pnpm, the bundled tools, and the project-local
+`typescript`.
 
 ### Test
 
-| Script      | Description           |
-|-------------|-----------------------|
-| `pnpm test` | Run integration tests |
+| Script            | Description                                    |
+|-------------------|------------------------------------------------|
+| `pnpm test`       | Run integration tests with coverage (80% gate) |
+| `pnpm test:watch` | Watch mode (no coverage)                       |
 
 ### Canned responses
 

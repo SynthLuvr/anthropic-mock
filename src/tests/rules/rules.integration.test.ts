@@ -72,6 +72,14 @@ const completionContent = async (response: Response): Promise<string> => {
   return parsed.choices?.[0]?.message?.content ?? "";
 };
 
+// Asserts that a request matching no rule falls back to the canned reply.
+const expectCannedFallback = async (url: string): Promise<void> => {
+  const plain = await postCompletion(url, [{ role: "user", content: "hi" }]);
+  expect(await completionContent(plain)).toContain(
+    "canned response from llm-mockingbird",
+  );
+};
+
 describe("rule replies (integration)", () => {
   it("serves an interpolated anthropic rule reply as the SSE stream", async () => {
     const rules: readonly MockRule[] = [
@@ -189,12 +197,7 @@ describe("rule replies (integration)", () => {
       expect(await completionContent(special)).toBe("from the special model");
 
       // No match: the canned response is served.
-      const plain = await postCompletion(server.url, [
-        { role: "user", content: "hi" },
-      ]);
-      expect(await completionContent(plain)).toContain(
-        "canned response from llm-mockingbird",
-      );
+      await expectCannedFallback(server.url);
     } finally {
       await server.close();
     }
@@ -215,12 +218,7 @@ describe("rule replies (integration)", () => {
       );
       expect(await completionContent(canary)).toBe("canary reply");
 
-      const plain = await postCompletion(server.url, [
-        { role: "user", content: "hi" },
-      ]);
-      expect(await completionContent(plain)).toContain(
-        "canned response from llm-mockingbird",
-      );
+      await expectCannedFallback(server.url);
     } finally {
       await server.close();
     }
@@ -238,12 +236,7 @@ describe("rule replies (integration)", () => {
       );
       expect(openaiStreamText(await streamed.text())).toBe("streaming rule");
 
-      const plain = await postCompletion(server.url, [
-        { role: "user", content: "hi" },
-      ]);
-      expect(await completionContent(plain)).toContain(
-        "canned response from llm-mockingbird",
-      );
+      await expectCannedFallback(server.url);
     } finally {
       await server.close();
     }

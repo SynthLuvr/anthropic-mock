@@ -1,3 +1,10 @@
+# ts-canon@0.1.3 is pinned in the lockfile but younger than pnpm's
+# 24h minimumReleaseAge supply-chain quarantine; excluded so frozen
+# installs (CI) accept it. Drop this entry once the version is 24h old
+# (published 2026-08-29T07:23:52Z).
 allowBuilds:
   '@ast-grep/cli': true
   esbuild: true
+minimumReleaseAgeExclude:
+  - ts-canon@0.1.3
+scriptShell: bash

@@ -48,7 +48,11 @@ describe("loadRulesFile (unit)", () => {
   it("rejects invalid JSON, naming the file", () => {
     const path = writeRules("{not json");
     expect(() => loadRulesFile(path)).toThrow(/not valid JSON/);
-    expect(() => loadRulesFile(path)).toThrow(new RegExp(path));
+    // Windows paths contain backslashes, which are regex escapes unless
+    // escaped themselves.
+    expect(() => loadRulesFile(path)).toThrow(
+      new RegExp(path.replaceAll("\\", "\\\\")),
+    );
   });
 
   it("rejects an unreadable file", () => {

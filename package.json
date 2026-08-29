@@ -25,7 +25,7 @@
   "homepage": "https://github.com/SynthLuvr/llm-mockingbird#readme",
   "type": "module",
   "license": "MIT",
-  "packageManager": "pnpm@11.15.0",
+  "packageManager": "pnpm@11.22.0",
   "engines": {
     "node": "==26"
   },
@@ -42,22 +42,10 @@
   },
   "scripts": {
     "build": "tsc",
-    "format:arrows": "pnpm convert-to-arrow .",
-    "format:biome": "pnpm biome format --write .",
-    "format:braces": "pnpm strip-braces .",
-    "format:check": "pnpm biome check --write .",
-    "format": "npm-run-all format:arrows format:braces format:biome format:check format:md",
-    "lint:biome": "pnpm biome check .",
-    "lint:oxlint": "pnpm oxlint .",
-    "lint": "npm-run-all lint:biome lint:oxlint lint:exports lint:functions lint:file-comment lint:md lint:peer-deps",
-    "strip-braces": "pnpm exec ast-grep scan --rule .ast-grep/rules/strip-braces.yml -U",
-    "lint:exports": "pnpm exec ast-grep scan --rule .ast-grep/rules/no-inline-export.yml --error=no-inline-export --globs '!**/*.d.ts' .",
-    "lint:functions": "pnpm exec ast-grep scan --rule .ast-grep/rules/no-function-declaration.yml --error=no-function-declaration --globs '!**/*.d.ts' .",
-    "lint:file-comment": "pnpm exec ast-grep scan --rule .ast-grep/rules/no-file-comment.yml --error=no-file-comment --globs '!**/*.d.ts' .",
-    "lint:md": "tsx scripts/pandoc-md.mts --check",
-    "lint:peer-deps": "tsx scripts/peer-deps.mts",
-    "format:md": "tsx scripts/pandoc-md.mts --write",
-    "test": "vitest run"
+    "format": "ts-canon format",
+    "lint": "ts-canon lint",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "arktype": "^2.2.3",
@@ -65,17 +53,12 @@
     "tsx": "^4.23.1"
   },
   "devDependencies": {
-    "@ast-grep/cli": "^0.44.1",
-    "@ast-grep/cli-linux-x64-gnu": "^0.44.1",
-    "@biomejs/biome": "^2.5.4",
-    "@types/node": "^26.1.1",
-    "convert-to-arrow": "^1.1.4",
+    "@types/node": "^26.2.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "execa": "^10.0.1",
     "ky": "^2.0.2",
-    "npm-run-all2": "^9.0.2",
-    "oxlint": "^1.74.0",
-    "oxlint-tsgolint": "^7.0.2001",
+    "ts-canon": "^0.1.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
