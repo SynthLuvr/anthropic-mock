@@ -7,21 +7,46 @@ import {
   startOpenAIMock,
 } from "../create-mock";
 import { parsePort } from "../schemas";
+import type { RunningMock } from "../types";
 import { createClient } from "./helpers";
 
+// Starts a mock, checks its reported url shape and reachable model list,
+// and shuts it down again.
+const expectEphemeralServer = async (
+  start: () => Promise<RunningMock>,
+  model: string,
+): Promise<void> => {
+  const mock = await start();
+
+  expect(mock.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+
+  const response = await createClient(mock.url).get("v1/models");
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  expect(text).toContain(model);
+
+  await mock.close();
+};
+
+// Starts a mock, verifies it answers, then proves close() takes it down.
+const expectCloseStopsServer = async (
+  start: () => Promise<RunningMock>,
+): Promise<void> => {
+  const mock = await start();
+  const client = createClient(mock.url);
+
+  const ok = await client.get("v1/models");
+  expect(ok.status).toBe(200);
+  await ok.text();
+
+  await mock.close();
+
+  await expect(client.get("v1/models", { timeout: 2000 })).rejects.toThrow();
+};
+
 describe("startAnthropicMock (integration)", () => {
-  it("starts on an ephemeral port and reports a reachable url", async () => {
-    const mock = await startAnthropicMock();
-
-    expect(mock.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-
-    const response = await createClient(mock.url).get("v1/models");
-    expect(response.status).toBe(200);
-    const text = await response.text();
-    expect(text).toContain("claude-sonnet-4-5");
-
-    await mock.close();
-  });
+  it("starts on an ephemeral port and reports a reachable url", () =>
+    expectEphemeralServer(startAnthropicMock, "claude-sonnet-4-5"));
 
   it("honours the host option in the reported url", async () => {
     const mock = await startAnthropicMock({ host: "127.0.0.1" });
@@ -29,18 +54,8 @@ describe("startAnthropicMock (integration)", () => {
     await mock.close();
   });
 
-  it("close() stops the server so subsequent requests fail", async () => {
-    const mock = await startAnthropicMock();
-    const client = createClient(mock.url);
-
-    const ok = await client.get("v1/models");
-    expect(ok.status).toBe(200);
-    await ok.text();
-
-    await mock.close();
-
-    await expect(client.get("v1/models", { timeout: 2000 })).rejects.toThrow();
-  });
+  it("close() stops the server so subsequent requests fail", () =>
+    expectCloseStopsServer(startAnthropicMock));
 });
 
 describe("createAnthropicMock (integration)", () => {
@@ -60,31 +75,11 @@ describe("createAnthropicMock (integration)", () => {
 });
 
 describe("startOpenAIMock (integration)", () => {
-  it("starts on an ephemeral port and reports a reachable url", async () => {
-    const mock = await startOpenAIMock();
+  it("starts on an ephemeral port and reports a reachable url", () =>
+    expectEphemeralServer(startOpenAIMock, "gpt-4o"));
 
-    expect(mock.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-
-    const response = await createClient(mock.url).get("v1/models");
-    expect(response.status).toBe(200);
-    const text = await response.text();
-    expect(text).toContain("gpt-4o");
-
-    await mock.close();
-  });
-
-  it("close() stops the server so subsequent requests fail", async () => {
-    const mock = await startOpenAIMock();
-    const client = createClient(mock.url);
-
-    const ok = await client.get("v1/models");
-    expect(ok.status).toBe(200);
-    await ok.text();
-
-    await mock.close();
-
-    await expect(client.get("v1/models", { timeout: 2000 })).rejects.toThrow();
-  });
+  it("close() stops the server so subsequent requests fail", () =>
+    expectCloseStopsServer(startOpenAIMock));
 });
 
 describe("createOpenAIMock (integration)", () => {

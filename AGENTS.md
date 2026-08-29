@@ -2,8 +2,6 @@
 
 Instructions for AI coding agents working in this repository.
 
-This project mocks the Anthropic and OpenAI APIs for testing purposes.
-
 ## Quick Start
 
 ``` bash
@@ -22,6 +20,24 @@ pnpm build && pnpm lint && pnpm test
 ```
 
 All three must pass with zero errors.
+
+## Toolchain
+
+Lint, format, and environment checks come from
+[ts-canon](https://github.com/SynthLuvr/ts-canon) — one devDependency
+that bundles biome, oxlint (tsgolint), the ast-grep rules,
+convert-to-arrow, jscpd, and the pandoc/peer-deps/audit helpers.
+
+- Run tooling through `pnpm <script>` (`pnpm lint`, `pnpm format`), not
+  by invoking binaries in `node_modules/.bin` directly.
+- `ts-canon lint` / `ts-canon format` accept path arguments and `--fast`
+  (skips `pnpm audit` and jscpd).
+- `pnpm exec ts-canon doctor` diagnoses toolchain/environment problems.
+- Markdown files must be byte-identical to `pandoc --eol=lf -t gfm`
+  output; fix drift with `pnpm format`.
+- Tool, rule, and preset changes belong in ts-canon — bump its version
+  in `package.json` to pick them up. Do not add per-step tool scripts
+  back here.
 
 ## Coding Conventions (Enforced)
 
@@ -100,15 +116,20 @@ If the linter complains about formatting, run:
 pnpm format
 ```
 
-This runs four steps in order: 1. `convert-to-arrow` — rewrites
-`function` declarations to arrow consts 2. `strip-braces` — removes
-unnecessary braces from single-statement blocks 3. `biome format` —
-formats all files 4. `biome check` — applies lint auto-fixes
+This runs five steps in order (via `ts-canon format`):
+
+1.  `convert-to-arrow` — rewrites `function` declarations to arrow
+    consts
+2.  strip-braces — removes unnecessary braces from single-statement
+    blocks
+3.  `biome format` — formats all files
+4.  `biome check` — applies lint auto-fixes
+5.  `pandoc` — normalizes markdown to GFM
 
 ## Project Structure
 
 - Source code lives in `src/`
 - Tests live in `src/tests/` (filenames end in `.test.ts`)
-- TypeScript is type-check only (`noEmit: true`) — use `tsx` for dev
-  execution
+- TypeScript is type-check only (`noEmit: true`) — bundled tooling runs
+  TypeScript sources via tsx inside ts-canon
 - ESM only (`"type": "module"`)

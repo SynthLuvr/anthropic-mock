@@ -1,9 +1,3 @@
-import { defineConfig } from "vitest/config";
+import { vitestPreset } from "ts-canon/presets/vitest";
 
-const config = defineConfig({
-  test: {
-    include: ["src/tests/**/*.test.ts"],
-  },
-});
-
-export { config as default };
+export { vitestPreset as default };
