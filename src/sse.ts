@@ -9,6 +9,10 @@ import type { MockOptions } from "./types";
 
 const DEFAULT_RESPONSE = "Hi! This is a canned response from llm-mockingbird.";
 
+// Keepalives frequent enough to defeat any realistic read timeout while
+// staying far below any rate limit.
+const DEFAULT_STALL_KEEPALIVE_MS = 500;
+
 // Anthropic frames name their event (`event:` + `data:` lines); OpenAI
 // frames carry `data:` lines only, so one serializer serves both wire
 // formats.
@@ -19,11 +23,14 @@ type SseEvent = {
 
 // How a stream fails once its error duration elapses: `transport` tears the
 // socket down mid-flight (no closing frames); `sse` emits the error frame
-// and ends the stream cleanly.
-type ErrorMode = {
-  readonly kind: "transport" | "sse";
-  readonly afterMs: number;
-};
+// and ends the stream cleanly; `stall` never terminates the stream at all.
+type ErrorMode =
+  | { readonly kind: "transport" | "sse"; readonly afterMs: number }
+  | {
+      readonly kind: "stall";
+      readonly afterMs: number;
+      readonly keepaliveMs: number;
+    };
 
 // Everything streamReply needs to serve one endpoint: the frames of a
 // successful stream, plus the opening frames and delta shape the error
@@ -74,9 +81,18 @@ const resolveFallbackText = (options: MockOptions): string => {
   return options.cannedResponse ?? DEFAULT_RESPONSE;
 };
 
-// The SSE error mode wins when both are configured.
+// The stall mode wins when several are configured: it is the most
+// specific — a stream that never terminates can never reach the other
+// terminations. Next comes the SSE error frame, then the transport abort.
 const resolveErrorMode = (options: MockOptions): ErrorMode | undefined => {
-  const { streamErrorAfterMs, streamSseErrorAfterMs } = options;
+  const { streamErrorAfterMs, streamSseErrorAfterMs, streamStallAfterMs } =
+    options;
+  if (streamStallAfterMs !== undefined && streamStallAfterMs > 0)
+    return {
+      kind: "stall",
+      afterMs: streamStallAfterMs,
+      keepaliveMs: options.streamStallKeepaliveMs ?? DEFAULT_STALL_KEEPALIVE_MS,
+    };
   if (streamSseErrorAfterMs !== undefined && streamSseErrorAfterMs > 0)
     return { kind: "sse", afterMs: streamSseErrorAfterMs };
   if (streamErrorAfterMs !== undefined && streamErrorAfterMs > 0)
@@ -135,6 +151,25 @@ const streamOpeningThenDeltas = async (
     }
 };
 
+// Holds the stream open with nothing but keepalive comment lines — a
+// provider that wedged after streaming some content. The comment frames
+// defeat byte-level read timeouts while every SSE parser ignores them, so
+// the client sees silence on a healthy connection. Ends only when the
+// client gives up and disconnects, which flips `writable` off.
+const stallForever = async (
+  raw: ServerResponse,
+  keepaliveMs: number,
+): Promise<void> => {
+  if (keepaliveMs <= 0) {
+    await once(raw, "close");
+    return;
+  }
+  while (raw.writable) {
+    raw.write(": ping\n\n");
+    await sleep(keepaliveMs);
+  }
+};
+
 const streamByMode = async (
   raw: ServerResponse,
   plan: StreamPlan,
@@ -145,16 +180,20 @@ const streamByMode = async (
   else if (errorMode.kind === "transport") {
     await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
     raw.destroy();
-  } else {
+  } else if (errorMode.kind === "sse") {
     await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
     await writeFrame(raw, plan.errorEvent, plan.delayMs);
     raw.end();
+  } else if (errorMode.kind === "stall") {
+    await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
+    await stallForever(raw, errorMode.keepaliveMs);
   }
 };
 
 // Hijacks the reply and streams `plan.events` to completion, or — when an
 // error mode is configured — the opening frames and deltas for the
-// configured duration followed by that mode's termination.
+// configured duration followed by that mode's termination (or, for the
+// stall mode, by no termination at all).
 const streamReply = async (
   reply: FastifyReply,
   plan: StreamPlan,

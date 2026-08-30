@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { type } from "arktype";
 import { describe, expect, it } from "vitest";
 
+import { sleep } from "../../sse";
 import { startTestServer } from "../helpers";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -312,5 +313,103 @@ describe("POST /v1/messages mid-stream SSE error event (integration)", () => {
     expect(response.status).toBe(200);
     // Deltas genuinely streamed over time before the error arrived.
     expect(elapsed).toBeGreaterThanOrEqual(120);
+  });
+});
+
+describe("POST /v1/messages mid-stream stall (integration)", () => {
+  // A stalled stream never ends, so drain() would hang. Read until the
+  // stall is observable, then cancel — the disconnect a real client
+  // performs when it gives up waiting.
+  const readUntilCancelled = async (
+    response: Response,
+    keepReading: (body: string) => boolean,
+  ): Promise<string> => {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let body = "";
+    while (keepReading(body)) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      body += decoder.decode(value, { stream: true });
+    }
+    await reader.cancel();
+    return body;
+  };
+
+  it("streams opening frames and deltas, then stalls with keepalives and no closing frames", async () => {
+    const content = "the quick brown fox jumps over";
+    const server = await startTestServer({
+      cannedResponse: content,
+      streamChunkSize: 8,
+      streamChunkDelayMs: 2,
+      streamStallAfterMs: 60,
+      streamStallKeepaliveMs: 20,
+    });
+
+    const response = await postMessages(server.url);
+    const body = await readUntilCancelled(response, (text) => {
+      const pings = (text.match(/: ping/g) ?? []).length;
+      return pings < 3;
+    });
+    await server.close();
+
+    expect(response.status).toBe(200);
+    const events = parseEvents(body);
+    // Opening frames and deltas were delivered before the stall.
+    expect(events.some((event) => event.event === "message_start")).toBe(true);
+    expect(events.some((event) => event.event === "content_block_start")).toBe(
+      true,
+    );
+    expect(deltaCount(events)).toBeGreaterThan(1);
+    expect(deltaText(events).startsWith(content)).toBe(true);
+    // Keepalive comments flow on the wire — bytes arrive, so a byte-level
+    // read timeout never fires.
+    expect((body.match(/: ping/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // But the stream never terminates: no closing frames, no [DONE], and no
+    // error — the client cannot tell this apart from a slow model.
+    expect(body).not.toContain("content_block_stop");
+    expect(body).not.toContain("message_delta");
+    expect(body).not.toContain("message_stop");
+    expect(body).not.toContain("event: error");
+    expect(body).not.toContain("[DONE]");
+  });
+
+  it("goes fully silent when keepalives are disabled", async () => {
+    const server = await startTestServer({
+      cannedResponse: "x".repeat(64),
+      streamChunkSize: 8,
+      streamChunkDelayMs: 2,
+      streamStallAfterMs: 60,
+      streamStallKeepaliveMs: 0,
+    });
+
+    const response = await postMessages(server.url);
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let body = "";
+    // Consume the opening frames and deltas until they stop arriving.
+    for (;;) {
+      const chunk = await Promise.race([
+        reader.read(),
+        sleep(150).then(() => null),
+      ]);
+      if (chunk === null) break;
+      const { done, value } = chunk;
+      if (done) break;
+      body += decoder.decode(value, { stream: true });
+    }
+    const silent = await Promise.race([
+      reader.read().then(() => true),
+      sleep(300).then(() => false),
+    ]);
+    await reader.cancel();
+    await server.close();
+
+    expect(response.status).toBe(200);
+    expect(deltaCount(parseEvents(body))).toBeGreaterThan(1);
+    // After the stall begins, not a single byte arrives on the socket.
+    expect(silent).toBe(false);
+    expect(body).not.toContain("message_stop");
+    expect(body).not.toContain("[DONE]");
   });
 });
