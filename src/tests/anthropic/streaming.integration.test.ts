@@ -336,6 +336,36 @@ describe("POST /v1/messages mid-stream stall (integration)", () => {
     return body;
   };
 
+  // Reads until no chunk arrives within `quietMs` (a fully silent stall),
+  // then probes one further window for any late byte before cancelling.
+  const readUntilSilent = async (
+    response: Response,
+    quietMs: number,
+  ): Promise<{ readonly body: string; readonly staysSilent: boolean }> => {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let body = "";
+    for (;;) {
+      const chunk = await Promise.race([
+        reader.read(),
+        sleep(quietMs).then(() => null),
+      ]);
+      if (chunk === null) break;
+      const { done, value } = chunk;
+      if (done) break;
+      body += decoder.decode(value, { stream: true });
+    }
+    const lateByte = await Promise.race([
+      reader.read().then(() => true),
+      sleep(quietMs).then(() => false),
+    ]);
+    await reader.cancel();
+    return { body, staysSilent: !lateByte };
+  };
+
+  const pingCount = (body: string): number =>
+    (body.match(/: ping/g) ?? []).length;
+
   it("streams opening frames and deltas, then stalls with keepalives and no closing frames", async () => {
     const content = "the quick brown fox jumps over";
     const server = await startTestServer({
@@ -347,10 +377,10 @@ describe("POST /v1/messages mid-stream stall (integration)", () => {
     });
 
     const response = await postMessages(server.url);
-    const body = await readUntilCancelled(response, (text) => {
-      const pings = (text.match(/: ping/g) ?? []).length;
-      return pings < 3;
-    });
+    const body = await readUntilCancelled(
+      response,
+      (text) => pingCount(text) < 3,
+    );
     await server.close();
 
     expect(response.status).toBe(200);
@@ -364,7 +394,7 @@ describe("POST /v1/messages mid-stream stall (integration)", () => {
     expect(deltaText(events).startsWith(content)).toBe(true);
     // Keepalive comments flow on the wire — bytes arrive, so a byte-level
     // read timeout never fires.
-    expect((body.match(/: ping/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(pingCount(body)).toBeGreaterThanOrEqual(3);
     // But the stream never terminates: no closing frames, no [DONE], and no
     // error — the client cannot tell this apart from a slow model.
     expect(body).not.toContain("content_block_stop");
@@ -384,31 +414,13 @@ describe("POST /v1/messages mid-stream stall (integration)", () => {
     });
 
     const response = await postMessages(server.url);
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let body = "";
-    // Consume the opening frames and deltas until they stop arriving.
-    for (;;) {
-      const chunk = await Promise.race([
-        reader.read(),
-        sleep(150).then(() => null),
-      ]);
-      if (chunk === null) break;
-      const { done, value } = chunk;
-      if (done) break;
-      body += decoder.decode(value, { stream: true });
-    }
-    const silent = await Promise.race([
-      reader.read().then(() => true),
-      sleep(300).then(() => false),
-    ]);
-    await reader.cancel();
+    const { body, staysSilent } = await readUntilSilent(response, 150);
     await server.close();
 
     expect(response.status).toBe(200);
     expect(deltaCount(parseEvents(body))).toBeGreaterThan(1);
     // After the stall begins, not a single byte arrives on the socket.
-    expect(silent).toBe(false);
+    expect(staysSilent).toBe(true);
     expect(body).not.toContain("message_stop");
     expect(body).not.toContain("[DONE]");
   });

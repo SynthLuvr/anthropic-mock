@@ -25,7 +25,8 @@ type SseEvent = {
 // socket down mid-flight (no closing frames); `sse` emits the error frame
 // and ends the stream cleanly; `stall` never terminates the stream at all.
 type ErrorMode =
-  | { readonly kind: "transport" | "sse"; readonly afterMs: number }
+  | { readonly kind: "transport"; readonly afterMs: number }
+  | { readonly kind: "sse"; readonly afterMs: number }
   | {
       readonly kind: "stall";
       readonly afterMs: number;
@@ -81,21 +82,25 @@ const resolveFallbackText = (options: MockOptions): string => {
   return options.cannedResponse ?? DEFAULT_RESPONSE;
 };
 
+// Each fault duration arms its mode only when positive; 0 disables it.
+const isArmed = (ms: number | undefined): ms is number =>
+  ms !== undefined && ms > 0;
+
 // The stall mode wins when several are configured: it is the most
 // specific — a stream that never terminates can never reach the other
 // terminations. Next comes the SSE error frame, then the transport abort.
 const resolveErrorMode = (options: MockOptions): ErrorMode | undefined => {
   const { streamErrorAfterMs, streamSseErrorAfterMs, streamStallAfterMs } =
     options;
-  if (streamStallAfterMs !== undefined && streamStallAfterMs > 0)
+  if (isArmed(streamStallAfterMs))
     return {
       kind: "stall",
       afterMs: streamStallAfterMs,
       keepaliveMs: options.streamStallKeepaliveMs ?? DEFAULT_STALL_KEEPALIVE_MS,
     };
-  if (streamSseErrorAfterMs !== undefined && streamSseErrorAfterMs > 0)
+  if (isArmed(streamSseErrorAfterMs))
     return { kind: "sse", afterMs: streamSseErrorAfterMs };
-  if (streamErrorAfterMs !== undefined && streamErrorAfterMs > 0)
+  if (isArmed(streamErrorAfterMs))
     return { kind: "transport", afterMs: streamErrorAfterMs };
   return undefined;
 };
@@ -134,8 +139,8 @@ const streamEvents = async (
 };
 
 // Writes the opening frames, then cycles the deltas until `durationMs`
-// elapses — the shared body of both error modes, which differ only in how
-// they terminate.
+// elapses — the shared body of every error mode, which differ only in
+// how they terminate.
 const streamOpeningThenDeltas = async (
   raw: ServerResponse,
   plan: StreamPlan,
@@ -175,19 +180,16 @@ const streamByMode = async (
   plan: StreamPlan,
 ): Promise<void> => {
   const { errorMode } = plan;
-  if (errorMode === undefined)
+  if (errorMode === undefined) {
     await streamEvents(raw, plan.events, plan.delayMs);
-  else if (errorMode.kind === "transport") {
-    await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
-    raw.destroy();
-  } else if (errorMode.kind === "sse") {
-    await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
+    return;
+  }
+  await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
+  if (errorMode.kind === "transport") raw.destroy();
+  else if (errorMode.kind === "sse") {
     await writeFrame(raw, plan.errorEvent, plan.delayMs);
     raw.end();
-  } else if (errorMode.kind === "stall") {
-    await streamOpeningThenDeltas(raw, plan, errorMode.afterMs);
-    await stallForever(raw, errorMode.keepaliveMs);
-  }
+  } else await stallForever(raw, errorMode.keepaliveMs);
 };
 
 // Hijacks the reply and streams `plan.events` to completion, or — when an

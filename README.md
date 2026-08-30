@@ -61,13 +61,13 @@ declaratively.
     `: ping` keepalive comments every `streamStallKeepaliveMs`
     milliseconds. Keepalives are legal SSE comment frames: they carry no
     data, so event-driven clients see silence, while byte-level read
-    timeouts never fire because bytes keep arriving. This reproduces a
-    provider that accepts the request, streams some content, and then
-    wedges behind keepalives - `streamSseErrorAfterMs`: stream deltas,
-    then emit a structured SSE error frame and end the stream cleanly —
-    a *parseable* mid-stream error after the `200` (Anthropic:
-    `event: error` with `{"error":{"type":"overloaded_error",...}}`, its
-    only mid-stream error channel after a 200 (ADR 0004); OpenAI:
+    timeouts never fire because bytes keep arriving — a provider that
+    streams some content and then wedges behind keepalives
+  - `streamSseErrorAfterMs`: stream deltas, then emit a structured SSE
+    error frame and end the stream cleanly — a *parseable* mid-stream
+    error after the `200` (Anthropic: `event: error` with
+    `{"error":{"type":"overloaded_error",...}}`, its only mid-stream
+    error channel after a 200 (ADR 0004); OpenAI:
     `data: {"error":{"message":...,"type":"server_error",...}}`). The
     error type and message are configurable. For non-streaming OpenAI
     requests the configured error is returned as an HTTP `500` JSON
@@ -412,8 +412,9 @@ opening frames and deltas, but then sends a structured `event: error`
 SSE frame — the only mid-stream error channel the real API uses after a
 `200` (its documented example is `overloaded_error`) — and ends cleanly.
 No closing frames or `[DONE]` are sent, because the error is terminal:
-event: error data:
-{“type”:“error”,“error”:{“type”:“overloaded_error”,“message”:“Overloaded”}}
+
+    event: error
+    data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
 
 Use `streamSseErrorType` and `streamSseErrorMessage` to customise the
 `error.type` and `error.message`. Unlike `streamErrorAfterMs` (an abrupt

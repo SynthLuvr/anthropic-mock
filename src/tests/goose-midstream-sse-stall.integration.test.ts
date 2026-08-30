@@ -60,7 +60,7 @@ describe.skipIf(!gooseInstalled)(
 
         // goose fires the main response and a background title-generation
         // request concurrently; only the main one counts.
-        let completions = 0;
+        let mainRequests = 0;
         app = createOpenAIMock({
           cannedResponse: CANNED_REPLY,
           streamStallAfterMs: STALL_AFTER_MS,
@@ -74,7 +74,7 @@ describe.skipIf(!gooseInstalled)(
             return;
           const body = (request.body ?? {}) as { messages?: unknown };
           if (!JSON.stringify(body.messages ?? "").includes("title"))
-            completions++;
+            mainRequests++;
         });
 
         const url = await startMock(app);
@@ -108,7 +108,7 @@ describe.skipIf(!gooseInstalled)(
         // The main request ran exactly once and was never retried: goose
         // is stuck waiting on the first response, not cycling through
         // failures. A fixed goose would retry (> 1) or fail fast.
-        expect(completions).toBe(1);
+        expect(mainRequests).toBe(1);
       },
       TEST_TIMEOUT_MS,
     );
